@@ -607,7 +607,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: 'An API key from **Settings → API keys**, e.g. `cpb_live_…` or `cpb_test_…`.'
+      description: 'An API key from **Settings → API keys**, e.g. `cpb_live_…`.'
 
   parameters:
     MissionId:

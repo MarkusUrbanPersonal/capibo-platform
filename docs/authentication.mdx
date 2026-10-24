@@ -13,12 +13,7 @@ curl https://api.capibo.work/v1/missions \
 
 Requests without a valid key return `401` with `api_key_invalid`. Keys belong to your organization, not to a person, so they keep working when teammates leave.
 
-## Live and test keys
-
-| Prefix | Use for | Behavior |
-| --- | --- | --- |
-| `cpb_live_` | Production | Real missions, real collectors and real charges. |
-| `cpb_test_` | Development and CI | Same API surface. Missions are never dispatched, no credits are spent, and datasets return sample videos. |
+Keys start with `cpb_live_`. They create real missions and draw real credits, so use `"dispatch": false` to try mission creation without launching anything.
 
 ## Scopes
 
