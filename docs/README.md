@@ -12,4 +12,12 @@ mint broken-links   # check internal links
 - `openapi.yaml`: the Capibo API spec. The **API reference** tab and its playground are generated from it.
 - `*.mdx`: guide pages. Webhook event pages in `api-reference/events/` are generated from the spec's `webhooks` section.
 
-To deploy, connect this folder to Mintlify (dashboard → Git settings, monorepo path `/docs`). Every push to `main` deploys.
+## Deploying
+
+This folder lives in the main `calhacks` repo and is published, on its own, to [calibo-docs](https://github.com/MarkusUrbanPersonal/calibo-docs), which Mintlify deploys from. After committing changes in `calhacks`, run this from the `calhacks` root:
+
+```bash
+git subtree push --prefix docs docs main
+```
+
+Edit the docs in `calhacks`, not in `calibo-docs`, or the next push will be rejected.
