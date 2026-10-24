@@ -7,8 +7,8 @@ mode: frame
 
 <div className="px-6 lg:px-12 pb-24 max-w-4xl mx-auto">
 
-<div className="flex flex-col items-center text-center pt-16 pb-12">
-  <img src="/images/mascot.png" alt="Capibo mascot" noZoom className="w-56 h-56 sm:w-64 sm:h-64 object-contain" />
+<div className="flex flex-col items-center text-center pt-16 pb-14">
+  <img src="/images/mascot.png" alt="Capibo mascot" noZoom className="w-24 h-24 object-contain" />
   <img src="/logo/light.svg" alt="Capibo" noZoom className="block dark:hidden h-12 mt-2" />
   <img src="/logo/dark.svg" alt="Capibo" noZoom className="hidden dark:block h-12 mt-2" />
   <p className="mt-6 text-xl text-gray-600 dark:text-gray-400 max-w-lg">
@@ -18,23 +18,6 @@ mode: frame
     <a href="/quickstart" className="px-5 py-2.5 rounded-full bg-[#171717] text-white dark:bg-[#F2CF5B] dark:text-[#171717] font-medium no-underline">Get started</a>
     <a href="/api-reference/introduction" className="px-5 py-2.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium no-underline">API reference</a>
   </div>
-</div>
-
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-14">
-  {[
-    { n: "1", title: "Plan", text: "Describe the skill. Get tasks and a cost estimate.", href: "/concepts/missions" },
-    { n: "2", title: "Record", text: "Vetted collectors film it first-person.", href: "/concepts/missions" },
-    { n: "3", title: "Review", text: "Every clip is checked. You pay for accepted ones.", href: "/concepts/quality-review" },
-    { n: "4", title: "Pull", text: "Sync or export to LeRobot, RLDS or WebDataset.", href: "/concepts/datasets" },
-  ].map((s) => (
-    <a key={s.n} href={s.href} className="group rounded-2xl border border-gray-200 dark:border-gray-800 p-5 no-underline hover:border-[#F2CF5B] transition-colors">
-      <div className="flex items-center gap-2">
-        <span className="flex items-center justify-center w-7 h-7 rounded-full bg-[#F2CF5B] text-[#171717] text-sm font-semibold">{s.n}</span>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{s.title}</span>
-      </div>
-      <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 leading-snug">{s.text}</p>
-    </a>
-  ))}
 </div>
 
 <CardGroup cols={2}>
