@@ -2,40 +2,54 @@
 title: Introduction
 description: Egocentric video data for training robots, collected on demand.
 icon: house
+mode: frame
 ---
 
-Capibo collects first-person videos of people doing real tasks: folding laundry, loading dishwashers, packing groceries. Robotics teams use them to train manipulation policies. You describe what your robot should learn. Capibo turns that into recordable tasks, sends them to vetted collectors through the Capibo mobile app, reviews every clip and delivers the accepted ones as a training-ready dataset.
+<div className="px-6 lg:px-12 pb-24 max-w-4xl mx-auto">
 
-The platform at [capibo.work](https://capibo.work) covers the whole flow in a browser. Use the API when you want it to run inside your own systems, for example a training job that pulls new videos every night, or a script that launches a mission whenever a new skill enters your roadmap.
+<div className="flex flex-col items-center text-center pt-16 pb-12">
+  <img src="/images/mascot.png" alt="Capibo mascot" noZoom className="w-56 h-56 sm:w-64 sm:h-64 object-contain" />
+  <img src="/logo/light.svg" alt="Capibo" noZoom className="block dark:hidden h-12 mt-2" />
+  <img src="/logo/dark.svg" alt="Capibo" noZoom className="hidden dark:block h-12 mt-2" />
+  <p className="mt-6 text-xl text-gray-600 dark:text-gray-400 max-w-lg">
+    First-person video of real tasks, collected on demand to train your robots.
+  </p>
+  <div className="mt-8 flex flex-wrap gap-3 justify-center">
+    <a href="/quickstart" className="px-5 py-2.5 rounded-full bg-[#171717] text-white dark:bg-[#F2CF5B] dark:text-[#171717] font-medium no-underline">Get started</a>
+    <a href="/api-reference/introduction" className="px-5 py-2.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 font-medium no-underline">API reference</a>
+  </div>
+</div>
+
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-14">
+  {[
+    { n: "1", title: "Plan", text: "Describe the skill. Get tasks and a cost estimate.", href: "/concepts/missions" },
+    { n: "2", title: "Record", text: "Vetted collectors film it first-person.", href: "/concepts/missions" },
+    { n: "3", title: "Review", text: "Every clip is checked. You pay for accepted ones.", href: "/concepts/quality-review" },
+    { n: "4", title: "Pull", text: "Sync or export to LeRobot, RLDS or WebDataset.", href: "/concepts/datasets" },
+  ].map((s) => (
+    <a key={s.n} href={s.href} className="group rounded-2xl border border-gray-200 dark:border-gray-800 p-5 no-underline hover:border-[#F2CF5B] transition-colors">
+      <div className="flex items-center gap-2">
+        <span className="flex items-center justify-center w-7 h-7 rounded-full bg-[#F2CF5B] text-[#171717] text-sm font-semibold">{s.n}</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{s.title}</span>
+      </div>
+      <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 leading-snug">{s.text}</p>
+    </a>
+  ))}
+</div>
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Make your first request and list your datasets in five minutes.
+    Your first request in five minutes.
   </Card>
-  <Card title="Feed your training pipeline" icon="workflow" href="/guides/training-pipeline">
-    Sync accepted videos incrementally and export them as LeRobot, RLDS or WebDataset.
+  <Card title="Training pipeline" icon="workflow" href="/guides/training-pipeline">
+    Sync accepted videos into your training jobs.
   </Card>
   <Card title="Webhooks" icon="webhook" href="/guides/webhooks">
-    Get a request the moment a video is accepted or a mission completes.
+    Hear the moment a video is accepted.
   </Card>
   <Card title="API reference" icon="braces" href="/api-reference/introduction">
-    Every endpoint, with a playground you can call using your own key.
+    Every endpoint, with a live playground.
   </Card>
 </CardGroup>
 
-## How it fits together
-
-<Steps>
-  <Step title="Plan a mission">
-    A **mission** is a data-collection project, like *Household laundry folding*. It's split into **tasks**, the individual clips to record, like *Fold t-shirt* or *Stack folded clothes*. Each task has a video target and a clip length. [Estimate](/api-reference/planning/estimate-a-mission) the cost before you commit.
-  </Step>
-  <Step title="Collectors record">
-    Collectors in your chosen regions get the tasks with recording guidelines in their language. They record with a chest- or head-mounted phone.
-  </Step>
-  <Step title="Every clip is reviewed">
-    Each submission goes through [quality review](/concepts/quality-review): hands in frame, lighting, blur, task completion and privacy. Only accepted videos are billed at the task price. Every submission also pays a small QA fee.
-  </Step>
-  <Step title="Pull your dataset">
-    Accepted videos are added to the mission's [dataset](/concepts/datasets). List them through the API, or export the dataset to S3, GCS or Hugging Face in the format your training code expects.
-  </Step>
-</Steps>
+</div>
