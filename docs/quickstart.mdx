@@ -1,0 +1,99 @@
+---
+title: Quickstart
+description: Make your first API request in five minutes.
+icon: rocket
+---
+
+<Steps>
+  <Step title="Create an API key">
+    In the platform, open **Settings → API keys** and click **Create key**. Choose the narrowest scope that works. For a training pipeline that only reads data, pick **Read datasets**.
+
+    Copy the key right away. It's shown only once. Live keys start with `cpb_live_` and test keys with `cpb_test_`.
+
+    ```bash
+    export CAPIBO_API_KEY="cpb_live_..."
+    ```
+  </Step>
+
+  <Step title="List your datasets">
+    Every mission with at least one accepted video has a dataset.
+
+    <CodeGroup>
+    ```bash curl
+    curl https://api.capibo.work/v1/datasets \
+      -H "Authorization: Bearer $CAPIBO_API_KEY"
+    ```
+
+    ```python Python
+    import os, requests
+
+    res = requests.get(
+        "https://api.capibo.work/v1/datasets",
+        headers={"Authorization": f"Bearer {os.environ['CAPIBO_API_KEY']}"},
+    )
+    res.raise_for_status()
+    for ds in res.json()["data"]:
+        print(ds["id"], ds["name"], ds["videos"])
+    ```
+
+    ```javascript JavaScript
+    const res = await fetch("https://api.capibo.work/v1/datasets", {
+      headers: { Authorization: `Bearer ${process.env.CAPIBO_API_KEY}` },
+    });
+    const { data } = await res.json();
+    console.table(data.map(({ id, name, videos }) => ({ id, name, videos })));
+    ```
+    </CodeGroup>
+
+    ```json Response
+    {
+      "data": [
+        {
+          "id": "DS-301",
+          "name": "Household laundry folding · v1.2",
+          "mission_id": "MSN-1042",
+          "version": "v1.2",
+          "videos": 7339,
+          "hours": 49,
+          "avg_quality": 90,
+          "updated_at": "2026-10-24T06:00:00Z"
+        }
+      ],
+      "has_more": false,
+      "next_cursor": null
+    }
+    ```
+  </Step>
+
+  <Step title="Fetch some videos">
+    List the newest accepted videos in a dataset. Each one includes signed `download_url` and `annotations_url` links that stay valid for an hour.
+
+    ```bash
+    curl "https://api.capibo.work/v1/datasets/DS-301/videos?limit=5" \
+      -H "Authorization: Bearer $CAPIBO_API_KEY"
+    ```
+  </Step>
+
+  <Step title="Estimate a new mission">
+    Price a mission without creating anything:
+
+    ```bash
+    curl https://api.capibo.work/v1/missions/estimate \
+      -H "Authorization: Bearer $CAPIBO_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "regions": ["US", "PT", "MX"],
+        "tasks": [
+          { "name": "Fold t-shirt", "videos": 900, "duration": [20, 45] },
+          { "name": "Fold towel",   "videos": 450, "duration": [15, 35] }
+        ]
+      }'
+    ```
+
+    The response breaks the total into per-task subtotals and QA processing. It also includes the collector pool size, the expected delivery time in days, and whether your credit balance covers the cost. When you're happy with it, send the same tasks to [`POST /missions`](/api-reference/missions/create-a-mission).
+  </Step>
+</Steps>
+
+<Tip>
+  Every endpoint in the [API reference](/api-reference/introduction) has a playground. Paste your key once and send real requests from the docs.
+</Tip>

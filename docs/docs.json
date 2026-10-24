@@ -1,0 +1,182 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Capibo",
+  "description": "Egocentric video data for training robots. Plan missions, review quality and pull accepted videos into your pipeline.",
+  "colors": {
+    "primary": "#171717",
+    "light": "#F2CF5B",
+    "dark": "#171717"
+  },
+  "favicon": "/favicon.png",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://capibo.work"
+  },
+  "fonts": {
+    "family": "Inter"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:support@capibo.work"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Open platform",
+      "href": "https://capibo.work"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/missions",
+              "concepts/quality-review",
+              "concepts/datasets",
+              "concepts/billing"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/training-pipeline",
+              "guides/webhooks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "openapi": "openapi.yaml",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/introduction",
+              "api-reference/errors",
+              "api-reference/pagination"
+            ]
+          },
+          {
+            "group": "Missions",
+            "pages": [
+              "GET /missions",
+              "POST /missions",
+              "GET /missions/{mission_id}",
+              "PATCH /missions/{mission_id}",
+              "GET /missions/{mission_id}/stats"
+            ]
+          },
+          {
+            "group": "Planning",
+            "pages": [
+              "POST /missions/estimate"
+            ]
+          },
+          {
+            "group": "Datasets",
+            "pages": [
+              "GET /datasets",
+              "GET /datasets/{dataset_id}",
+              "GET /datasets/{dataset_id}/videos"
+            ]
+          },
+          {
+            "group": "Videos",
+            "pages": [
+              "GET /videos/{video_id}"
+            ]
+          },
+          {
+            "group": "Exports",
+            "pages": [
+              "POST /datasets/{dataset_id}/exports",
+              "GET /exports/{export_id}"
+            ]
+          },
+          {
+            "group": "Billing",
+            "pages": [
+              "GET /billing/balance",
+              "GET /billing/transactions",
+              "POST /billing/promo-codes/redeem"
+            ]
+          },
+          {
+            "group": "Usage",
+            "pages": [
+              "GET /usage"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "GET /webhooks",
+              "POST /webhooks",
+              "DELETE /webhooks/{webhook_id}",
+              {
+                "group": "Events",
+                "pages": [
+                  "api-reference/events/video-accepted",
+                  "api-reference/events/video-rejected",
+                  "api-reference/events/mission-completed",
+                  "api-reference/events/export-ready",
+                  "api-reference/events/balance-low"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "api": {
+    "playground": {
+      "display": "interactive"
+    },
+    "examples": {
+      "languages": [
+        "curl",
+        "python",
+        "javascript"
+      ]
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "website": "https://capibo.work"
+    }
+  },
+  "seo": {
+    "metatags": {
+      "canonical": "https://docs.capibo.work"
+    }
+  }
+}

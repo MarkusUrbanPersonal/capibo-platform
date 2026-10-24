@@ -1,0 +1,56 @@
+---
+title: Quality review
+description: How every submission is checked before it reaches your dataset.
+icon: shield-check
+---
+
+Every video goes through quality review (QA) before it counts toward a task. A video has one of three statuses:
+
+| Status | Meaning | Billed |
+| --- | --- | --- |
+| `processing` | Still in review. Usually takes under an hour. | Not yet |
+| `accepted` | Passed every check and was added to the dataset. | Task price + QA fee |
+| `rejected` | Failed at least one check. | QA fee only |
+
+## Checks
+
+Each video carries the individual results in `checks`, plus an overall `quality` score from 0 to 100:
+
+```json
+{
+  "status": "accepted",
+  "quality": 91,
+  "checks": {
+    "hands_in_frame": true,
+    "lighting": 88,
+    "blur": 6,
+    "task_complete": true,
+    "privacy": true
+  },
+  "rejection_reason": null
+}
+```
+
+| Check | What it verifies |
+| --- | --- |
+| `hands_in_frame` | Both hands stay visible. Clips are rejected if the hands leave the frame for more than 2 seconds. |
+| `lighting` | The scene is bright and even enough for vision models. 0–100, higher is better. |
+| `blur` | Motion blur stays under the threshold. 0–100, lower is sharper. |
+| `task_complete` | The clip shows the whole task from start to finish. |
+| `privacy` | No faces, screens or personal documents are in frame. |
+
+## Rejection reasons
+
+Rejected videos include a `rejection_reason`:
+
+- Hands leave frame for more than 2s
+- Insufficient lighting
+- Motion blur above threshold
+- Task not completed
+- Face visible without consent
+- Camera not egocentric
+- Duplicate submission
+
+<Tip>
+  The [mission stats endpoint](/api-reference/missions/retrieve-mission-stats) reports acceptance per task. If one task's acceptance drops well below the others, its instructions are usually ambiguous. Clarify them, or split the task in two.
+</Tip>

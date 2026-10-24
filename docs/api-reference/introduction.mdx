@@ -1,0 +1,35 @@
+---
+title: API reference
+description: A REST API over HTTPS that sends and receives JSON.
+icon: braces
+---
+
+```
+https://api.capibo.work/v1
+```
+
+The API is organized around resources: [missions](/api-reference/missions/list-missions), [datasets](/api-reference/datasets/list-datasets), [videos](/api-reference/videos/retrieve-a-video), [exports](/api-reference/exports/create-an-export), [billing](/api-reference/billing/retrieve-credit-balance), [usage](/api-reference/usage/retrieve-usage) and [webhooks](/api-reference/webhooks/list-webhook-endpoints). Every request needs an [API key](/authentication) sent as `Authorization: Bearer cpb_…`.
+
+## Conventions
+
+| | |
+| --- | --- |
+| **Format** | JSON request and response bodies. Send `Content-Type: application/json`. |
+| **Field names** | `snake_case`. |
+| **IDs** | Prefixed strings: `MSN-1042`, `DS-301`, `VID-784210`, `EXP-20931`, `TXN-81009`, `wh_3kd92m`. |
+| **Timestamps** | ISO 8601 in UTC, like `2026-10-24T09:41:07Z`. Dates without a time use `YYYY-MM-DD`. |
+| **Money** | USD as numbers, like `3.19`. |
+| **Lists** | Cursor-paginated. See [Pagination](/api-reference/pagination). |
+| **Errors** | A consistent `error` object. See [Errors](/api-reference/errors). |
+
+## Idempotency
+
+`POST /missions` and `POST /datasets/{id}/exports` accept an `Idempotency-Key` header. If a request times out, retry it with the same key. You'll get the original response back instead of creating a second mission or export. Keys are kept for 24 hours.
+
+## Rate limits
+
+Each key can make **100 requests per second**, with bursts up to 200. Over the limit, you get `429 rate_limited` with a `Retry-After` header in seconds. List endpoints return up to 100 items per page, so a full sync rarely gets close to the limit.
+
+## Versioning
+
+The version is in the path (`/v1`). Within a version, changes are additive only: new endpoints, new optional parameters and new response fields. Make sure your client ignores fields it doesn't recognize.

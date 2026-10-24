@@ -1,0 +1,91 @@
+---
+title: Feed your training pipeline
+description: Sync newly accepted videos into your storage on a schedule.
+icon: workflow
+---
+
+This guide builds a small sync job. Each run downloads only the videos accepted since the previous run. Run it from cron, Airflow or a step at the start of each training run.
+
+<Steps>
+  <Step title="Pick the dataset">
+    Find the dataset ID for your mission with [`GET /datasets`](/api-reference/datasets/list-datasets), or copy it from the dataset page in the platform (for example `DS-301`).
+  </Step>
+
+  <Step title="Page through new videos">
+    `created_after` limits results to videos newer than your last sync. The API returns pages of up to 100. Follow `next_cursor` until `has_more` is `false`.
+
+    ```python sync.py
+    import json, os, pathlib, requests
+
+    API = "https://api.capibo.work/v1"
+    HEADERS = {"Authorization": f"Bearer {os.environ['CAPIBO_API_KEY']}"}
+    DATASET = "DS-301"
+    OUT = pathlib.Path("data") / DATASET
+    STATE = OUT / ".last_sync"
+
+    def new_videos(since):
+        params = {"limit": 100, "status": "accepted"}
+        if since:
+            params["created_after"] = since
+        while True:
+            page = requests.get(f"{API}/datasets/{DATASET}/videos", headers=HEADERS, params=params)
+            page.raise_for_status()
+            body = page.json()
+            yield from body["data"]
+            if not body["has_more"]:
+                return
+            params["cursor"] = body["next_cursor"]
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    since = STATE.read_text().strip() if STATE.exists() else None
+    newest = since
+    count = 0
+
+    for video in new_videos(since):
+        target = OUT / video["task_id"] / f"{video['id']}.mp4"
+        target.parent.mkdir(exist_ok=True)
+        with requests.get(video["download_url"], stream=True) as r:
+            r.raise_for_status()
+            with open(target, "wb") as f:
+                for chunk in r.iter_content(1 << 20):
+                    f.write(chunk)
+        (target.with_suffix(".json")).write_text(json.dumps(video, indent=2))
+        newest = max(newest or "", video["created_at"])
+        count += 1
+
+    if newest:
+        STATE.write_text(newest)
+    print(f"Synced {count} new videos into {OUT}")
+    ```
+
+    <Note>
+      `download_url` is signed and expires after an hour. Download each video while you process its page, rather than saving the URLs for later.
+    </Note>
+  </Step>
+
+  <Step title="Or export a full snapshot">
+    For a complete, versioned copy in a standard format, create an export and poll it until it's `ready`:
+
+    ```python
+    import time
+
+    export = requests.post(
+        f"{API}/datasets/{DATASET}/exports",
+        headers={**HEADERS, "Idempotency-Key": "ds301-nightly-2026-10-24"},
+        json={"format": "lerobot", "destination": "s3"},
+    ).json()
+
+    while export["status"] not in ("ready", "failed"):
+        time.sleep(30)
+        export = requests.get(f"{API}/exports/{export['id']}", headers=HEADERS).json()
+
+    print(export["status"], export["url"])  # ready s3://timefactories/datasets/DS-301/v1.2
+    ```
+
+    Rather than polling, you can subscribe to the `export.ready` [webhook](/guides/webhooks).
+  </Step>
+</Steps>
+
+## Going real time
+
+If you need videos within minutes of acceptance, subscribe to `video.accepted` instead of polling. Each event includes the full video object with a fresh `download_url`. Keep the scheduled sync as a backstop, since it also picks up anything your endpoint missed during downtime.

@@ -1,0 +1,102 @@
+---
+title: Webhooks
+description: Receive events when videos are reviewed, missions complete and exports are ready.
+icon: webhook
+---
+
+Webhooks send an HTTPS `POST` to your server when something happens in your organization, so you don't have to poll.
+
+## Events
+
+| Event | Fires when | `data` |
+| --- | --- | --- |
+| [`video.accepted`](/api-reference/events/video-accepted) | A video passes quality review | [Video](/api-reference/datasets/list-dataset-videos) |
+| [`video.rejected`](/api-reference/events/video-rejected) | A video fails quality review | Video, with `rejection_reason` |
+| [`mission.completed`](/api-reference/events/mission-completed) | A mission reaches its target | Mission |
+| [`export.ready`](/api-reference/events/export-ready) | An export is delivered | Export, with `url` |
+| [`balance.low`](/api-reference/events/balance-low) | Credits fall below your auto-recharge threshold | Balance |
+
+Every event has the same envelope:
+
+```json
+{
+  "id": "evt_8hf21k",
+  "type": "video.accepted",
+  "created_at": "2026-10-24T09:41:07Z",
+  "data": { "id": "VID-784210", "mission_id": "MSN-1042", "status": "accepted", "...": "..." }
+}
+```
+
+## Create an endpoint
+
+Register in **Settings → Integrations → Webhooks**, or with the API:
+
+```bash
+curl https://api.capibo.work/v1/webhooks \
+  -H "Authorization: Bearer $CAPIBO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "url": "https://ml.example.com/hooks/capibo", "events": ["video.accepted", "export.ready"] }'
+```
+
+The response includes a `secret` (`whsec_…`). It's only returned once, so store it with your other secrets.
+
+## Verify signatures
+
+Each delivery has a `Capibo-Signature` header:
+
+```
+Capibo-Signature: t=1792834867,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+```
+
+`v1` is an HMAC-SHA256 of `{t}.{raw request body}`, keyed with your endpoint secret. Reject requests with a bad signature, or with a timestamp more than five minutes old.
+
+<CodeGroup>
+```python Python (Flask)
+import hashlib, hmac, os, time
+from flask import Flask, abort, request
+
+app = Flask(__name__)
+SECRET = os.environ["CAPIBO_WEBHOOK_SECRET"].encode()
+
+@app.post("/hooks/capibo")
+def capibo_webhook():
+    header = dict(p.split("=", 1) for p in request.headers["Capibo-Signature"].split(","))
+    signed = f"{header['t']}.".encode() + request.get_data()
+    expected = hmac.new(SECRET, signed, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, header["v1"]) or time.time() - int(header["t"]) > 300:
+        abort(400)
+
+    event = request.get_json()
+    if event["type"] == "video.accepted":
+        enqueue_download(event["data"])  # your code
+    return "", 204
+```
+
+```javascript Node (Express)
+import crypto from "node:crypto";
+import express from "express";
+
+const app = express();
+const secret = process.env.CAPIBO_WEBHOOK_SECRET;
+
+app.post("/hooks/capibo", express.raw({ type: "application/json" }), (req, res) => {
+  const header = Object.fromEntries(req.get("Capibo-Signature").split(",").map((p) => p.split("=")));
+  const expected = crypto.createHmac("sha256", secret).update(`${header.t}.${req.body}`).digest("hex");
+  const fresh = Date.now() / 1000 - Number(header.t) < 300;
+  const valid = header.v1?.length === expected.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(header.v1));
+  if (!fresh || !valid) {
+    return res.sendStatus(400);
+  }
+
+  const event = JSON.parse(req.body);
+  if (event.type === "video.accepted") enqueueDownload(event.data); // your code
+  res.sendStatus(204);
+});
+```
+</CodeGroup>
+
+## Delivery and retries
+
+- Respond with any `2xx` within 10 seconds. Do heavy work, like downloading the video, in a background job.
+- Failed deliveries are retried with exponential backoff for up to 3 days.
+- Events can arrive more than once or out of order. Use the event `id` to skip duplicates.

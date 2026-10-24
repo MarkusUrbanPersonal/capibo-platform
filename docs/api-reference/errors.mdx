@@ -1,0 +1,31 @@
+---
+title: Errors
+description: Status codes and the error object.
+icon: triangle-alert
+---
+
+Failed requests return a non-2xx status and an `error` object:
+
+```json
+{
+  "error": {
+    "type": "invalid_request",
+    "code": "parameter_invalid",
+    "message": "tasks[0].videos must be at least 1.",
+    "param": "tasks[0].videos"
+  }
+}
+```
+
+Branch on `type` and `code`. `message` is written for people and may change.
+
+| Status | `type` | Common `code`s | What to do |
+| --- | --- | --- | --- |
+| `400` | `invalid_request` | `parameter_missing`, `parameter_invalid` | Fix the request. `param` names the field. |
+| `401` | `authentication_error` | `api_key_invalid`, `api_key_revoked` | Check the `Authorization` header and key. |
+| `402` | `payment_required` | `insufficient_credits` | Add credits or redeem a promo code, then retry. |
+| `403` | `permission_denied` | `scope_insufficient` | Use a key with the right [scope](/authentication#scopes). |
+| `404` | `not_found` | `resource_missing`, `promo_code_invalid` | Check the ID, and that the key belongs to the right organization. |
+| `409` | `conflict` | `promo_code_redeemed`, `mission_completed` | The action conflicts with the resource's current state. |
+| `429` | `rate_limited` | `rate_limited` | Wait for `Retry-After` seconds, then retry. |
+| `5xx` | `api_error` | `internal_error` | Retry with exponential backoff. Use an `Idempotency-Key` on `POST`s. |

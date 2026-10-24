@@ -1,0 +1,41 @@
+---
+title: Introduction
+description: Egocentric video data for training robots, collected on demand.
+icon: house
+---
+
+Capibo collects first-person videos of people doing real tasks: folding laundry, loading dishwashers, packing groceries. Robotics teams use them to train manipulation policies. You describe what your robot should learn. Capibo turns that into recordable tasks, sends them to vetted collectors through the Capibo mobile app, reviews every clip and delivers the accepted ones as a training-ready dataset.
+
+The platform at [capibo.work](https://capibo.work) covers the whole flow in a browser. Use the API when you want it to run inside your own systems, for example a training job that pulls new videos every night, or a script that launches a mission whenever a new skill enters your roadmap.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Make your first request and list your datasets in five minutes.
+  </Card>
+  <Card title="Feed your training pipeline" icon="workflow" href="/guides/training-pipeline">
+    Sync accepted videos incrementally and export them as LeRobot, RLDS or WebDataset.
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="/guides/webhooks">
+    Get a request the moment a video is accepted or a mission completes.
+  </Card>
+  <Card title="API reference" icon="braces" href="/api-reference/introduction">
+    Every endpoint, with a playground you can call using your own key.
+  </Card>
+</CardGroup>
+
+## How it fits together
+
+<Steps>
+  <Step title="Plan a mission">
+    A **mission** is a data-collection project, like *Household laundry folding*. It's split into **tasks**, the individual clips to record, like *Fold t-shirt* or *Stack folded clothes*. Each task has a video target and a clip length. [Estimate](/api-reference/planning/estimate-a-mission) the cost before you commit.
+  </Step>
+  <Step title="Collectors record">
+    Collectors in your chosen regions get the tasks with recording guidelines in their language. They record with a chest- or head-mounted phone.
+  </Step>
+  <Step title="Every clip is reviewed">
+    Each submission goes through [quality review](/concepts/quality-review): hands in frame, lighting, blur, task completion and privacy. Only accepted videos are billed at the task price. Every submission also pays a small QA fee.
+  </Step>
+  <Step title="Pull your dataset">
+    Accepted videos are added to the mission's [dataset](/concepts/datasets). List them through the API, or export the dataset to S3, GCS or Hugging Face in the format your training code expects.
+  </Step>
+</Steps>

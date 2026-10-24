@@ -1,0 +1,54 @@
+---
+title: Credits and billing
+description: Prepaid credits, what's charged, and how to redeem promo codes.
+icon: wallet
+---
+
+Capibo is prepaid. You add **credits** to your organization's balance, and missions draw from it as videos are reviewed:
+
+| Charge | When | Amount |
+| --- | --- | --- |
+| Video collection | A video is **accepted** | The task's price per video, set by clip length |
+| QA processing | Any video is **reviewed**, accepted or not | $0.15 per submission |
+
+Rejected videos cost only the QA fee, so you never pay the task price for footage you can't use. Credits never expire.
+
+## Adding credits
+
+In the platform, go to **Billing → Add credits**:
+
+- **Buy credits**: pay by card at checkout, or by wire transfer for larger amounts.
+- **Promo code**: redeem a code from an event, partner or pilot program.
+
+Turn on **auto-recharge** to top up automatically when your balance falls below a threshold, so active missions never pause for lack of credits. Auto-recharge needs a card on file. You'll get a `balance.low` webhook either way.
+
+## Redeeming a promo code with the API
+
+```bash
+curl https://api.capibo.work/v1/billing/promo-codes/redeem \
+  -H "Authorization: Bearer $CAPIBO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "code": "CAL_HACKS" }'
+```
+
+```json Response
+{
+  "transaction": {
+    "id": "TXN-81009",
+    "kind": "promo",
+    "description": "Promo code CAL_HACKS redeemed",
+    "amount": 50000,
+    "status": "succeeded",
+    "created_at": "2026-07-02T17:12:00Z"
+  },
+  "balance": 50000
+}
+```
+
+Codes are case-insensitive and can be redeemed once per organization. Redeeming one again returns `409 promo_code_redeemed`. A code that doesn't exist returns `404 promo_code_invalid`. Redeeming requires a **Full access** key.
+
+## Checking spend
+
+- [`GET /billing/balance`](/api-reference/billing/retrieve-credit-balance) returns the current balance and auto-recharge settings.
+- [`GET /billing/transactions`](/api-reference/billing/list-transactions) lists top-ups, promo codes and monthly invoices.
+- [`GET /usage`](/api-reference/usage/retrieve-usage) returns daily submissions, accepted videos and spend, overall or for one mission.

@@ -1,0 +1,43 @@
+---
+title: Authentication
+description: Authenticate requests with an API key.
+icon: key-round
+---
+
+All requests use an API key, sent as a bearer token:
+
+```bash
+curl https://api.capibo.work/v1/missions \
+  -H "Authorization: Bearer cpb_live_..."
+```
+
+Requests without a valid key return `401` with `api_key_invalid`. Keys belong to your organization, not to a person, so they keep working when teammates leave.
+
+## Live and test keys
+
+| Prefix | Use for | Behavior |
+| --- | --- | --- |
+| `cpb_live_` | Production | Real missions, real collectors and real charges. |
+| `cpb_test_` | Development and CI | Same API surface. Missions are never dispatched, no credits are spent, and datasets return sample videos. |
+
+## Scopes
+
+Pick a scope when you create the key in **Settings → API keys**:
+
+| Scope | Can |
+| --- | --- |
+| **Read only** | Read missions, datasets, videos, usage and billing. |
+| **Read datasets** | Read datasets, videos and exports only. A good fit for training pipelines. |
+| **Full access** | Everything, including creating missions, exports, webhooks and redeeming promo codes. |
+
+A request outside the key's scope returns `403` with `permission_denied`.
+
+## Keeping keys safe
+
+<Warning>
+  Never ship an API key in client-side code or a mobile app. Call the API from your backend, notebooks or training infrastructure only.
+</Warning>
+
+- Store keys in a secret manager or environment variables, not in source control.
+- Use a separate key per system, so you can revoke one without breaking the others. The platform shows when each key was last used.
+- If a key leaks, revoke it in **Settings → API keys**. Revocation takes effect immediately.

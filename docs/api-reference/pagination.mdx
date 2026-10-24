@@ -1,0 +1,37 @@
+---
+title: Pagination
+description: Page through lists with cursors.
+icon: list-ordered
+---
+
+List endpoints return a page of results, newest first:
+
+```json
+{
+  "data": [{ "id": "VID-784210" }, { "id": "VID-784203" }],
+  "has_more": true,
+  "next_cursor": "eyJpZCI6IlZJRC03ODQyMDMifQ"
+}
+```
+
+| Parameter | Description |
+| --- | --- |
+| `limit` | Items per page, from 1 to 100. Defaults to 25. |
+| `cursor` | The `next_cursor` from the previous page. Leave it out to get the first page. |
+
+Keep requesting with `cursor` set to the latest `next_cursor` until `has_more` is `false`. Cursors are opaque, so don't parse or construct them. They stay valid for 24 hours.
+
+```python
+def paginate(url, **params):
+    params.setdefault("limit", 100)
+    while True:
+        body = requests.get(url, headers=HEADERS, params=params).json()
+        yield from body["data"]
+        if not body["has_more"]:
+            break
+        params["cursor"] = body["next_cursor"]
+```
+
+<Tip>
+  For incremental syncs, combine pagination with `created_after` on [`GET /datasets/{id}/videos`](/api-reference/datasets/list-dataset-videos). New videos then never shift the pages you're reading.
+</Tip>

@@ -1,0 +1,40 @@
+---
+title: Datasets and exports
+description: Where accepted videos live, and how to get them into your training code.
+icon: database
+---
+
+Each mission gets one **dataset** as soon as its first video is accepted. The dataset grows as more videos pass review. Its `version` increases when the mission's tasks change and becomes `v2.0` when the mission completes.
+
+A dataset only contains **accepted** videos. To audit what was rejected, list videos with `status=rejected`.
+
+## Two ways to get the data
+
+<CardGroup cols={2}>
+  <Card title="List and download" icon="list">
+    Page through [`GET /datasets/{id}/videos`](/api-reference/datasets/list-dataset-videos) and download each video from its signed `download_url`. Best for incremental syncs and custom pipelines.
+  </Card>
+  <Card title="Export" icon="package">
+    [`POST /datasets/{id}/exports`](/api-reference/exports/create-an-export) packages everything in a training format and delivers it to your storage. Best for full snapshots.
+  </Card>
+</CardGroup>
+
+## Export formats
+
+| `format` | Output |
+| --- | --- |
+| `lerobot` | A Hugging Face [LeRobot](https://github.com/huggingface/lerobot) dataset: videos, episode metadata and task labels. |
+| `rlds` | RLDS episodes as TFRecord shards, for TensorFlow and Open X-Embodiment tooling. |
+| `webdataset` | `.tar` shards that pair each MP4 with its JSON annotations, for streaming data loaders. |
+| `mp4-json` | Plain MP4 files plus one JSON annotation file per video. |
+
+## Destinations
+
+| `destination` | Delivered to |
+| --- | --- |
+| `s3` | The S3 bucket connected in **Settings → Integrations**. |
+| `gcs` | The connected Google Cloud Storage bucket. |
+| `hf` | A private repository in your connected Hugging Face organization. |
+| `link` | A signed download link, valid for 24 hours. |
+
+Exports blur any faces or screens detected in frame by default (`blur_faces: true`). Pass `created_after` to export only videos accepted since your last export.
