@@ -14,10 +14,10 @@ mint broken-links   # check internal links
 
 ## Deploying
 
-This folder lives in the main `calhacks` repo and is published, on its own, to [calibo-docs](https://github.com/MarkusUrbanPersonal/calibo-docs), which Mintlify deploys from. After committing changes in `calhacks`, run this from the `calhacks` root:
+This folder lives in the main `calhacks` repo and is published, on its own, to [capibo-docs](https://github.com/MarkusUrbanPersonal/capibo-docs), which Mintlify deploys from. After committing changes in `calhacks`, run this from the `calhacks` root:
 
 ```bash
 git subtree push --prefix docs docs main
 ```
 
-Edit the docs in `calhacks`, not in `calibo-docs`, or the next push will be rejected.
+Edit the docs in `calhacks`, not in `capibo-docs`, or the next push will be rejected.
