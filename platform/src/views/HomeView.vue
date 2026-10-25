@@ -4,13 +4,16 @@ import { useRouter } from 'vue-router'
 import {
   ArrowRight, ArrowUpRight, BookOpen, Database, Gauge, KeyRound, Sparkles, Target, Users, Wallet,
 } from '@lucide/vue'
-import { currentUser, rangeDays, sumRows, usageForRange } from '@/data/mock'
+import { api } from '@convex/_generated/api'
+import { useQuery } from '@/lib/convex'
+import { sumRows } from '@/lib/usage'
+import { currentUser } from '@/stores/session'
 import { TONES } from '@/lib/visuals'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, isoToday } from '@/lib/format'
 import { openSettings } from '@/stores/ui'
 
 const router = useRouter()
-const firstName = currentUser.name.split(' ')[0]
+const firstName = computed(() => currentUser.value?.name.split(' ')[0] ?? '')
 const greeting = (() => {
   const h = new Date().getHours()
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
@@ -56,7 +59,8 @@ const shortcuts = [
 ]
 
 // Last 30 days, with accepted green, processing yellow and rejected red.
-const totals = computed(() => sumRows(usageForRange(rangeDays('30d'))))
+const { data: usage } = useQuery(api.usage.overview, () => ({ today: isoToday(), days: 30 }))
+const totals = computed(() => sumRows(usage.value?.daily ?? []))
 const glance = computed(() => [
   { label: 'Accepted', value: totals.value.accepted, dot: 'bg-status-good' },
   { label: 'Processing', value: totals.value.processing, dot: 'bg-status-warning' },

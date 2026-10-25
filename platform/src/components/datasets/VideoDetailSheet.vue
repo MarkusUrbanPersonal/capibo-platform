@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { toast } from '@/components/ui/toast'
-import { Play, Copy, Download, Flag, CheckCircle2, XCircle, Clock } from '@lucide/vue'
+import { Play, Copy, Download, CheckCircle2, XCircle, Clock } from '@lucide/vue'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -60,12 +60,13 @@ function copyId() {
         </SheetHeader>
 
         <div class="flex flex-col gap-5 p-4">
-          <!-- Preview placeholder (media streaming is not connected in the demo) -->
-          <div class="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border bg-gradient-to-br from-muted to-muted/40">
+          <!-- Accepted videos with an uploaded file play inline; otherwise a placeholder -->
+          <video v-if="video.downloadUrl" :src="video.downloadUrl" controls preload="metadata" class="aspect-video w-full rounded-lg border bg-black" />
+          <div v-else class="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border bg-gradient-to-br from-muted to-muted/40">
             <div class="absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_30%_40%,var(--border)_1px,transparent_1px)] [background-size:12px_12px]" aria-hidden="true" />
-            <button type="button" class="relative flex size-12 items-center justify-center rounded-full bg-background/90 shadow-sm transition-transform hover:scale-105" aria-label="Play preview" @click="toast.add({ title: 'Preview streaming is not available in the demo' })">
-              <Play class="ml-0.5 size-5" />
-            </button>
+            <span class="relative flex items-center gap-2 rounded-full bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm">
+              <Play class="size-3.5" /> {{ video.status === 'accepted' ? 'No file uploaded' : 'Preview available once accepted' }}
+            </span>
             <span class="absolute right-2 bottom-2 rounded bg-background/90 px-1.5 py-0.5 font-mono text-[11px]">{{ formatDuration(video.duration) }}</span>
           </div>
 
@@ -119,10 +120,10 @@ function copyId() {
 
           <div class="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" @click="copyId"><Copy class="size-4" /> Copy ID</Button>
-            <Button size="sm" variant="outline" :disabled="video.status !== 'accepted'" @click="toast.add({ title: 'Download started', type: 'success', description: `${video.id}.mp4 + annotations.json` })">
-              <Download class="size-4" /> Download
+            <Button v-if="video.downloadUrl" size="sm" variant="outline" as-child>
+              <a :href="video.downloadUrl" :download="`${video.id}.mp4`"><Download class="size-4" /> Download</a>
             </Button>
-            <Button size="sm" variant="ghost" class="text-muted-foreground" @click="toast.add({ title: 'Flagged for manual review' })"><Flag class="size-4" /> Flag</Button>
+            <Button v-else size="sm" variant="outline" disabled><Download class="size-4" /> Download</Button>
           </div>
         </div>
       </template>

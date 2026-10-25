@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useEventListener } from '@vueuse/core'
 import { ConfigProvider } from 'reka-ui'
 import { BookOpen, Moon, Settings, Sun } from '@lucide/vue'
@@ -21,9 +21,33 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { Toaster } from '@/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { openSettings } from '@/stores/ui'
+import { auth, signOut } from '@/stores/auth'
+import { me } from '@/stores/session'
+import { convex } from '@/lib/convex'
+import { api } from '@convex/_generated/api'
+import { toast } from '@/components/ui/toast'
 import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
+const router = useRouter()
+
+// The router guard handles the first navigation. After that: record activity on sign-in,
+// and go back to login when the session ends (signed out here or in another tab, or expired).
+watch(
+  () => (auth.isLoading ? null : auth.isAuthenticated),
+  (signedIn, was) => {
+    if (signedIn) convex.mutation(api.account.touch, {}).catch(() => {})
+    else if (signedIn === false && was === true && !route.meta.public) router.replace({ name: 'login' })
+  },
+)
+
+// Signed in but no longer in any organization (e.g. removed from the team).
+watch(me, (value) => {
+  if (value === null && auth.isAuthenticated) {
+    toast.add({ title: 'You no longer belong to an organization', type: 'error', description: 'Ask an admin to invite you again.' })
+    signOut()
+  }
+})
 const { isDark, toggle } = useTheme()
 
 // Breadcrumb trail derived from the matched routes, as in the sidebar-08 page.
@@ -48,7 +72,13 @@ useEventListener(window, 'keydown', (e) => {
 <template>
   <!-- html already reserves the scrollbar gutter (style.css), so dialogs must not pad the body again -->
   <ConfigProvider :scroll-body="false">
-  <RouterView v-if="route.meta.layout === 'auth'" />
+  <template v-if="route.meta.layout === 'auth'">
+    <RouterView />
+    <Toaster />
+  </template>
+  <div v-else-if="!me" class="flex min-h-svh items-center justify-center" role="status" aria-label="Loading your workspace">
+    <img src="/mascot.png" alt="" class="size-14 animate-pulse object-contain" />
+  </div>
   <SidebarProvider v-else>
     <AppSidebar />
     <SidebarInset class="min-w-0">
@@ -60,7 +90,7 @@ useEventListener(window, 'keydown', (e) => {
             <BreadcrumbList>
               <BreadcrumbItem :class="crumbs.length ? 'hidden md:block' : ''">
                 <BreadcrumbLink v-if="crumbs.length" as-child>
-                  <RouterLink to="/">Timefactories</RouterLink>
+                  <RouterLink to="/">{{ me.organization.name }}</RouterLink>
                 </BreadcrumbLink>
                 <BreadcrumbPage v-else>Home</BreadcrumbPage>
               </BreadcrumbItem>

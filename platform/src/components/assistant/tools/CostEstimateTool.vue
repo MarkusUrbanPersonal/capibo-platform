@@ -7,9 +7,12 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { planner } from '@/stores/missions'
-import { billing } from '@/data/mock'
+import { organization } from '@/stores/session'
 import { visualFor } from '@/lib/visuals'
 import { formatCurrency, formatCurrencyRound, formatNumber } from '@/lib/format'
+
+// Estimate lines carry only names; the planner's tasks hold the icon and tone picked for them.
+const lineVisual = (name) => visualFor(name, planner.plan?.tasks.find((t) => t.name === name))
 
 const props = defineProps({
   tool: { type: Object, required: true },
@@ -23,9 +26,7 @@ const current = computed(
 )
 const launched = computed(() => planner.estimateCallId === props.tool.part.toolCallId && planner.launchedMissionId)
 
-// Five chart hues, then lighter tints of the same hues so a 6th+ task never repeats a color exactly.
-const HUES = ['var(--chart-1)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-5)', 'var(--chart-2)']
-const PALETTE = [...HUES, ...HUES.map((c) => `color-mix(in oklab, ${c} 50%, var(--background))`)]
+// Each task's segment uses its icon tile's hue, so the bar reads without a legend.
 const PROCESSING_COLOR = 'color-mix(in oklab, var(--muted-foreground) 35%, transparent)'
 
 // One segment per task plus QA processing, each with its share of the total.
@@ -34,14 +35,14 @@ const segments = computed(() => {
   if (!e) return []
   const pct = (v) => (e.total ? (v / e.total) * 100 : 0)
   return [
-    ...e.lines.map((l, i) => ({ key: l.name, label: l.name, value: l.subtotal, pct: pct(l.subtotal), color: PALETTE[i % PALETTE.length], line: l })),
+    ...e.lines.map((l) => ({ key: l.name, label: l.name, value: l.subtotal, pct: pct(l.subtotal), color: lineVisual(l.name).color, line: l })),
     { key: 'qa', label: 'QA processing', value: e.processing, pct: pct(e.processing), color: PROCESSING_COLOR },
   ]
 })
 
 const coverage = computed(() => {
   const total = est.value?.total ?? 0
-  const balance = billing.balance
+  const balance = organization.value?.balance ?? 0
   return {
     balance,
     covered: balance >= total,
@@ -80,9 +81,8 @@ const coverage = computed(() => {
 
       <ul class="grid gap-1">
         <li v-for="s in segments" :key="s.key" class="flex items-center gap-3 rounded-lg px-1 py-1.5 text-sm">
-          <span class="size-2.5 shrink-0 rounded-full" :style="{ background: s.color }" aria-hidden="true" />
-          <span v-if="s.line" class="flex size-7 shrink-0 items-center justify-center rounded-md" :class="visualFor(s.label).tone">
-            <component :is="visualFor(s.label).icon" class="size-3.5" aria-hidden="true" />
+          <span v-if="s.line" class="flex size-7 shrink-0 items-center justify-center rounded-md" :class="lineVisual(s.label).tone">
+            <component :is="lineVisual(s.label).icon" class="size-3.5" aria-hidden="true" />
           </span>
           <span v-else class="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
             <ShieldCheck class="size-3.5" aria-hidden="true" />

@@ -984,14 +984,14 @@ components:
         balance:
           type: number
           description: Prepaid credits, USD.
-          example: 18420.55
+          example: 842.55
         currency: { type: string, example: USD }
         auto_recharge:
           type: object
           properties:
             enabled: { type: boolean, example: false }
-            threshold: { type: number, example: 5000 }
-            amount: { type: number, example: 25000 }
+            threshold: { type: number, example: 20 }
+            amount: { type: number, example: 100 }
 
     Transaction:
       type: object
@@ -1001,7 +1001,7 @@ components:
           type: string
           enum: [credit, promo, invoice]
         description: { type: string, example: Promo code CAL_HACKS redeemed }
-        amount: { type: number, example: 50000 }
+        amount: { type: number, example: 1000 }
         status:
           type: string
           enum: [succeeded, pending, failed, paid]

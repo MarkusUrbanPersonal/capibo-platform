@@ -38,5 +38,6 @@ const cfg = computed(() => MAP[props.status] ?? { label: props.status, icon: Ale
   <Badge variant="outline" class="gap-1 rounded-full bg-background px-2 font-medium text-foreground">
     <component :is="cfg.icon" class="size-3" :class="TONES[cfg.tone]" aria-hidden="true" />
     {{ cfg.label }}
+    <slot />
   </Badge>
 </template>

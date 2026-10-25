@@ -74,8 +74,8 @@ function approve() {
         :style="{ animationDelay: drafting ? '0ms' : `${Math.min(i, 8) * 45}ms` }"
       >
         <div class="flex items-start gap-3">
-          <span class="flex size-10 shrink-0 items-center justify-center rounded-lg" :class="visualFor(task.name).tone">
-            <component :is="visualFor(task.name).icon" class="size-5" aria-hidden="true" />
+          <span class="flex size-10 shrink-0 items-center justify-center rounded-lg" :class="visualFor(task.name, task).tone">
+            <component :is="visualFor(task.name, task).icon" class="size-5" aria-hidden="true" />
           </span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
@@ -100,7 +100,7 @@ function approve() {
               v-model.number="task.videos"
               type="number"
               min="0"
-              step="50"
+              step="10"
               :aria-label="`Videos for ${task.name}`"
               class="h-7 w-20 text-right text-xs tabular-nums"
               :disabled="!task.enabled"

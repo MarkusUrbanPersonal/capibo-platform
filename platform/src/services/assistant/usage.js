@@ -1,24 +1,34 @@
 import { reactive } from 'vue'
 
-/** Token/cost meter shown in the assistant composer footer (mocked). */
-export function createUsageMeter({ model, contextWindow = 200_000, costPerKTokens = 0.006 }) {
+/**
+ * Token/cost meter shown in the assistant composer footer. It counts only real
+ * model calls: each call reports the provider's token counts and cost through
+ * `record`. Scripted replies (estimates, launches, help) use no tokens.
+ */
+export function createUsageMeter({ model, contextWindow = 1_048_576 }) {
   const state = reactive({
     model,
-    tokens: 0,
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cost: 0,
     contextWindow,
-    get cost() {
-      return (state.tokens / 1000) * costPerKTokens
+    get tokens() {
+      return state.inputTokens + state.outputTokens
     },
     get percent() {
       return Math.min(100, (state.tokens / state.contextWindow) * 100)
     },
-    add(n) {
-      // A system prompt + tool schemas are "sent" with the first message.
-      if (state.tokens === 0) state.tokens += 1840
-      state.tokens += n
+    /** Adds one model call's usage: `{ model, inputTokens, outputTokens, cost }`. */
+    record(call) {
+      state.requests += 1
+      state.inputTokens += call.inputTokens ?? 0
+      state.outputTokens += call.outputTokens ?? 0
+      state.cost += call.cost ?? 0
+      if (call.model) state.model = call.model
     },
     reset() {
-      state.tokens = 0
+      Object.assign(state, { model, requests: 0, inputTokens: 0, outputTokens: 0, cost: 0 })
     },
   })
   return state

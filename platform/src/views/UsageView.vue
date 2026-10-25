@@ -1,55 +1,48 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { Timer, Gauge, ShieldCheck, Layers } from '@lucide/vue'
+import { computed } from 'vue'
+import { Hourglass, Gauge, ShieldCheck, Layers } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import RangeSelect from '@/components/common/RangeSelect.vue'
 import UsageAreaChart from '@/components/charts/UsageAreaChart.vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { missionTotals, RANGE_OPTIONS, rangeDays, sumRows, usageForRange, videos } from '@/data/mock'
-import { formatCurrency, formatCurrencyRound, formatNumber } from '@/lib/format'
+import { api } from '@convex/_generated/api'
+import { useQuery } from '@/lib/convex'
+import { sumRows } from '@/lib/usage'
+import { formatCurrency, formatCurrencyRound, formatNumber, formatShortDate, isoToday } from '@/lib/format'
 
-// One date range for the whole page.
-const range = ref('30d')
-
-const days = computed(() => rangeDays(range.value))
-const rows = computed(() => usageForRange(days.value))
+const DAYS = 30
+const { data: usage } = useQuery(api.usage.overview, () => ({ today: isoToday(), days: DAYS }))
+const rows = computed(() => usage.value?.daily ?? [])
 const totals = computed(() => sumRows(rows.value))
 const costSeries = [{ key: 'cost', label: 'Credits used ($)', color: 'var(--chart-1)' }]
 
 const byMission = computed(() => {
-  const list = missionTotals(days.value).filter((m) => m.submitted > 0).sort((a, b) => b.submitted - a.submitted)
+  const list = (usage.value?.byMission ?? []).filter((m) => m.submitted > 0).sort((a, b) => b.submitted - a.submitted)
   const max = Math.max(...list.map((m) => m.submitted), 1)
   return list.map((m) => ({ ...m, bar: (m.submitted / max) * 100 }))
 })
 
 const qualityStats = computed(() => {
   const t = totals.value
-  const accepted = videos.filter((v) => v.status === 'accepted')
-  const avgScore = accepted.length ? Math.round(accepted.reduce((s, v) => s + v.quality, 0) / accepted.length) : 0
   return [
     { label: 'Acceptance rate', value: t.processed ? `${((t.accepted / t.processed) * 100).toFixed(1)}%` : '—', icon: ShieldCheck, detail: 'accepted ÷ reviewed' },
-    { label: 'Avg. quality score', value: String(avgScore), icon: Gauge, detail: 'accepted videos, 0–100' },
-    { label: 'Median time to review', value: '18 min', icon: Timer, detail: 'p95 2.4 h' },
-    { label: 'QA throughput', value: `${formatNumber(t.processed / days.value / 24)}/h`, icon: Layers, detail: 'videos reviewed per hour' },
+    { label: 'Avg. quality score', value: usage.value?.avgQuality ?? '—', icon: Gauge, detail: 'accepted videos, 0–100' },
+    { label: 'In review', value: formatNumber(t.processing), icon: Hourglass, detail: 'submitted, not yet reviewed' },
+    { label: 'QA throughput', value: `${formatNumber(t.processed / DAYS / 24)}/h`, icon: Layers, detail: 'videos reviewed per hour' },
   ]
 })
 
 const costTotals = computed(() => {
   const t = totals.value
-  return { total: t.cost, perAccepted: t.accepted ? t.cost / t.accepted : 0, daily: t.cost / days.value }
+  return { total: t.cost, perAccepted: t.accepted ? t.cost / t.accepted : 0, daily: t.cost / DAYS }
 })
-const rangeLabel = computed(() => RANGE_OPTIONS.find((o) => o.value === range.value)?.label.toLowerCase() ?? '')
+const rangeLabel = computed(() => (usage.value ? `${formatShortDate(usage.value.from)} – ${formatShortDate(usage.value.to)}` : ''))
 
 </script>
 
 <template>
   <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
-    <PageHeader title="Usage">
-      <template #actions>
-        <RangeSelect v-model="range" />
-      </template>
-    </PageHeader>
+    <PageHeader title="Usage" :description="rangeLabel" />
 
     <Card class="shadow-none">
       <CardHeader>

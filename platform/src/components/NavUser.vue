@@ -1,6 +1,6 @@
 <script setup>
 import { useRouter } from "vue-router";
-import { toast } from '@/components/ui/toast';
+import { signOut } from '@/stores/auth';
 import {
   Building2,
   ChevronsUpDown,
@@ -113,7 +113,7 @@ const { isDark, toggle } = useTheme();
             {{ isDark ? 'Light mode' : 'Dark mode' }}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem @click="toast.add({ title: 'Signed out (demo)', description: 'Authentication is not connected in this version.' })">
+          <DropdownMenuItem @click="signOut">
             <LogOut />
             Log out
           </DropdownMenuItem>

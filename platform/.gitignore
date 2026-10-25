@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Holds the live collector secret; share it privately, never commit it
+COLLECTOR_APP_SPEC.md

@@ -1,7 +1,7 @@
 <script setup>
 import { CalendarDays } from '@lucide/vue'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { RANGE_OPTIONS } from '@/data/mock'
+import { RANGE_OPTIONS } from '@/lib/ranges'
 
 const model = defineModel({ type: String, default: '30d' })
 defineProps({ options: { type: Array, default: () => RANGE_OPTIONS } })

@@ -1,10 +1,11 @@
-import {
-  billing, dailyUsage, invoices, missionTotals, sumRows, videos, TODAY,
-} from '@/data/mock'
+import { api } from '@convex/_generated/api'
+import { convex } from '@/lib/convex'
+import { isoToday } from '@/lib/format'
+import { sumRows } from '@/lib/usage'
 
 /**
- * Mock analytics agent for the Usage and Billing pages. It answers from the
- * same centralized demo data the charts use, so numbers always match the page.
+ * Scripted analytics agent for the Usage and Billing pages. It answers from the
+ * same Convex queries the dashboards use, so numbers always match the page.
  */
 
 export const ANALYTICS_MODEL = 'capibo-analyst-1'
@@ -12,7 +13,7 @@ export const ANALYTICS_MODEL = 'capibo-analyst-1'
 // Slash commands in assistant-ui's shape; see SLASH_COMMANDS in missionAgent.js.
 export const ANALYTICS_COMMANDS = [
   { id: 'summary', description: 'Key numbers for the last 30 days', icon: 'chart', category: 'Reports' },
-  { id: 'quality', description: 'Rejection reasons and problem missions', icon: 'shield', category: 'Reports' },
+  { id: 'quality', description: 'Acceptance by mission', icon: 'shield', category: 'Reports' },
   { id: 'missions', description: 'Usage and spend by mission', icon: 'target', category: 'Reports' },
   { id: 'forecast', description: 'Projected spend for this month', icon: 'trending', category: 'Billing' },
   { id: 'invoices', description: 'Latest invoices and payment status', icon: 'receipt', category: 'Billing' },
@@ -23,14 +24,14 @@ const usd = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD
 const num = (n) => Math.round(n).toLocaleString('en-US')
 const pct = (a, b) => (b ? `${((a / b) * 100).toFixed(1)}%` : '—')
 
-function last(days) {
-  return sumRows(dailyUsage.slice(-days))
-}
+const usage = (days) => convex.query(api.usage.overview, { today: isoToday(), days })
+const NO_DATA = 'No videos have been submitted in the last 30 days, so there is nothing to report yet. Numbers appear here as soon as collectors start recording for your missions.'
 
 async function summary(ctx) {
-  const cur = last(30)
-  const prev = sumRows(dailyUsage.slice(-60, -30))
   await ctx.think('Aggregating the last 30 days of daily usage across all missions and comparing with the previous 30-day window.')
+  const { daily } = await usage(60)
+  const prev = sumRows(daily.slice(0, 30))
+  const cur = sumRows(daily.slice(30))
   ctx.tool('query_usage', { range: 'last_30_days' }, {
     title: 'Last 30 days',
     metrics: [
@@ -40,85 +41,84 @@ async function summary(ctx) {
       { label: 'Spend', value: usd(cur.cost) },
     ],
   })
-  const change = ((cur.accepted - prev.accepted) / prev.accepted) * 100
+  if (!cur.submitted) return ctx.say(NO_DATA)
+  const change = prev.accepted ? `**${cur.accepted >= prev.accepted ? 'up' : 'down'} ${Math.abs(((cur.accepted - prev.accepted) / prev.accepted) * 100).toFixed(1)}%** versus the previous 30 days` : 'new this period'
   await ctx.say(
-    `Accepted videos are **${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}%** versus the previous 30 days. ` +
-      (change < 0
-        ? 'Most of the drop comes from **Warehouse tote picking** completing on Sep 15 — your running missions are growing week over week.'
-        : 'Growth is driven by the laundry and dishwasher missions ramping up.') +
-      ` Cost per accepted video is **$${(cur.cost / cur.accepted).toFixed(2)}**.`,
+    `Accepted videos are ${change}.` +
+      (cur.accepted ? ` Cost per accepted video is **$${(cur.cost / cur.accepted).toFixed(2)}**.` : ''),
   )
 }
 
 async function quality(ctx) {
-  await ctx.think('Grouping rejected videos by their primary QA failure, then ranking missions by rejection rate over the last 30 days.')
-  const counts = {}
-  for (const v of videos) if (v.rejectionReason) counts[v.rejectionReason] = (counts[v.rejectionReason] ?? 0) + 1
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  const reasons = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  await ctx.think('Ranking missions by rejection rate over the last 30 days.')
+  const { byMission } = await usage(30)
+  const rows = byMission.filter((m) => m.processed > 0).sort((a, b) => b.rejected / b.processed - a.rejected / a.processed)
   ctx.tool('query_quality', { range: 'last_30_days' }, {
-    title: 'Top rejection reasons',
-    columns: ['Reason', 'Share'],
-    rows: reasons.map(([r, n]) => [r, `${Math.round((n / total) * 100)}%`]),
+    title: 'Acceptance by mission',
+    columns: ['Mission', 'Reviewed', 'Accepted'],
+    rows: rows.map((m) => [m.name, num(m.processed), pct(m.accepted, m.processed)]),
   })
-  const worst = missionTotals(30)
-    .filter((m) => m.processed > 50)
-    .sort((a, b) => b.rejected / b.processed - a.rejected / a.processed)[0]
-  await ctx.say(
-    `**${worst.name}** has the highest rejection rate at **${pct(worst.rejected, worst.processed)}**. ` +
-      `The leading cause platform-wide is *${reasons[0][0].toLowerCase()}*. Adding a lighting check to the in-app recording guide typically cuts these rejections by a third.`,
-  )
+  if (!rows.length) return ctx.say('No videos have been reviewed in the last 30 days yet.')
+  const worst = rows[0]
+  await ctx.say(`**${worst.name}** has the highest rejection rate at **${pct(worst.rejected, worst.processed)}**. Open a rejected video in its dataset to see which quality checks it failed.`)
 }
 
 async function byMission(ctx) {
   await ctx.think('Summing accepted videos and spend per mission for the last 30 days, sorted by spend.')
-  const rows = missionTotals(30).filter((m) => m.submitted > 0).sort((a, b) => b.cost - a.cost)
+  const rows = (await usage(30)).byMission.filter((m) => m.submitted > 0).sort((a, b) => b.cost - a.cost)
   ctx.tool('usage_by_mission', { range: 'last_30_days' }, {
     title: 'Usage by mission · 30 days',
     columns: ['Mission', 'Accepted', 'Spend'],
     rows: rows.map((m) => [m.name, num(m.accepted), usd(m.cost)]),
   })
-  const top = rows[0]
-  const share = (top.cost / rows.reduce((s, m) => s + m.cost, 0)) * 100
-  await ctx.say(`**${top.name}** accounts for **${share.toFixed(0)}%** of spend this period.`)
+  const total = rows.reduce((s, m) => s + m.cost, 0)
+  if (!total) return ctx.say(NO_DATA)
+  await ctx.say(`**${rows[0].name}** accounts for **${((rows[0].cost / total) * 100).toFixed(0)}%** of spend this period.`)
 }
 
 async function forecast(ctx) {
-  await ctx.think('Projecting month-end spend from month-to-date daily run rate, adjusting for weekends which run ~28% higher.')
-  const month = TODAY.toISOString().slice(0, 7)
-  const mtdRows = dailyUsage.filter((r) => r.date.startsWith(month))
-  const mtd = mtdRows.reduce((s, r) => s + r.cost, 0)
-  const daysInMonth = new Date(Date.UTC(TODAY.getUTCFullYear(), TODAY.getUTCMonth() + 1, 0)).getUTCDate()
-  const projected = (mtd / mtdRows.length) * daysInMonth
-  ctx.tool('forecast_spend', { month }, {
-    title: 'October 2026 forecast',
+  await ctx.think('Projecting month-end spend from the month-to-date daily run rate.')
+  const today = isoToday()
+  const [[mtdRow], billing] = await Promise.all([
+    convex.query(api.usage.monthly, { today, months: 1 }),
+    convex.query(api.billing.overview, {}),
+  ])
+  const day = Number(today.slice(8, 10))
+  const [y, m] = today.split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  const rate = mtdRow.cost / day
+  const projected = rate * daysInMonth
+  const monthName = new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  ctx.tool('forecast_spend', { month: today.slice(0, 7) }, {
+    title: `${monthName} forecast`,
     metrics: [
-      { label: 'Month to date', value: usd(mtd) },
+      { label: 'Month to date', value: usd(mtdRow.cost) },
       { label: 'Projected', value: usd(projected) },
       { label: 'Budget', value: usd(billing.monthlyBudget) },
       { label: 'Credit balance', value: usd(billing.balance) },
     ],
   })
-  const runway = billing.balance / (mtd / mtdRows.length)
+  if (!rate) return ctx.say(`Nothing has been charged this month yet, and your balance is **${usd(billing.balance)}**. Charges start when collectors' videos are reviewed.`)
   await ctx.say(
     `You're on track to spend **${usd(projected)}** this month — **${pct(projected, billing.monthlyBudget)}** of your budget. ` +
-      `Your credit balance covers about **${Math.floor(runway)} days** at the current rate; auto-recharge adds ${usd(billing.autoRecharge.amount)} below ${usd(billing.autoRecharge.threshold)}.`,
+      `Your credit balance covers about **${Math.floor(billing.balance / rate)} days** at the current rate.`,
   )
 }
 
 async function invoiceStatus(ctx) {
-  await ctx.think('Looking up the three most recent invoices and the default payment method.')
+  await ctx.think('Looking up the most recent invoices.')
+  const { transactions } = await convex.query(api.billing.overview, {})
+  const invoices = transactions.filter((t) => t.kind === 'invoice')
+  if (!invoices.length) {
+    return ctx.say('There are no invoices on this account. Capibo is prepaid: missions draw from your credit balance, which you can see under **Billing → Transactions**.')
+  }
   ctx.tool('list_invoices', { limit: 3 }, {
     title: 'Recent invoices',
     columns: ['Invoice', 'Amount', 'Status'],
-    rows: invoices.slice(0, 3).map((i) => [i.id, usd(i.amount), i.status === 'paid' ? 'Paid' : 'Pending']),
+    rows: invoices.slice(0, 3).map((i) => [i.id, usd(i.amount), i.status === 'pending' ? 'Pending' : 'Paid']),
   })
   const pending = invoices.find((i) => i.status === 'pending')
-  await ctx.say(
-    pending
-      ? `**${pending.id}** (${usd(pending.amount)}) is pending and will be settled from your prepaid credits on Nov 1. All earlier invoices are paid.`
-      : 'All invoices are paid.',
-  )
+  await ctx.say(pending ? `**${pending.id}** (${usd(pending.amount)}) is pending.` : 'All invoices are paid.')
 }
 
 async function help(ctx) {

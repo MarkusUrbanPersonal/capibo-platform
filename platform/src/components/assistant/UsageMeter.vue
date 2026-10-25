@@ -4,7 +4,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Progress } from '@/components/ui/progress'
 import { formatCompact, formatNumber } from '@/lib/format'
 
-// Context-window / token usage indicator for the assistant composer (mocked).
+// Context-window / token usage indicator for the assistant composer. Counts real model calls only.
 const props = defineProps({
   usage: { type: Object, required: true },
 })
@@ -37,14 +37,16 @@ const dash = computed(() => `${(Math.max(props.usage.percent, props.usage.tokens
       </div>
       <Progress :model-value="usage.percent" class="mt-3 h-1.5" aria-hidden="true" />
       <dl class="mt-3 grid grid-cols-2 gap-y-1.5 text-xs">
-        <dt class="text-muted-foreground">Tokens used</dt>
-        <dd class="text-right tabular-nums">{{ formatNumber(usage.tokens) }}</dd>
+        <dt class="text-muted-foreground">Input tokens</dt>
+        <dd class="text-right tabular-nums">{{ formatNumber(usage.inputTokens) }}</dd>
+        <dt class="text-muted-foreground">Output tokens</dt>
+        <dd class="text-right tabular-nums">{{ formatNumber(usage.outputTokens) }}</dd>
         <dt class="text-muted-foreground">Window</dt>
         <dd class="text-right tabular-nums">{{ formatNumber(usage.contextWindow) }}</dd>
         <dt class="text-muted-foreground">Session cost</dt>
         <dd class="text-right tabular-nums">${{ usage.cost.toFixed(4) }}</dd>
       </dl>
-      <p class="mt-3 border-t pt-2 text-[11px] text-muted-foreground">Type <code class="font-mono">/usage</code> for a full report. Planner responses are simulated in this version.</p>
+      <p class="mt-3 border-t pt-2 text-[11px] text-muted-foreground">Type <code class="font-mono">/usage</code> for a full report.</p>
     </HoverCardContent>
   </HoverCard>
 </template>

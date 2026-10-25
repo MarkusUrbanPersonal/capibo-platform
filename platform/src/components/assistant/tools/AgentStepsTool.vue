@@ -2,10 +2,10 @@
 import { computed, ref } from 'vue'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
 import { useAuiState } from '@assistant-ui/vue'
-import { CheckCircle2, ChevronDown, CircleSlash, Loader2 } from '@lucide/vue'
+import { CheckCircle2, ChevronDown, CircleSlash, CircleX, Loader2 } from '@lucide/vue'
 import StepList from '../StepList.vue'
 
-// Live agent work log: steps load, then turn green. Collapses once finished.
+// Live agent work log: steps load, then turn green (or red on failure). Collapses once finished.
 const props = defineProps({
   tool: { type: Object, required: true },
 })
@@ -13,10 +13,11 @@ const props = defineProps({
 const r = computed(() => props.tool.part.result ?? { steps: [] })
 const isRunning = useAuiState((s) => s.thread.isRunning)
 const done = computed(() => r.value.done)
-const stopped = computed(() => !done.value && !isRunning.value)
+const failed = computed(() => r.value.failed)
+const stopped = computed(() => !done.value && !failed.value && !isRunning.value)
 const finished = computed(() => r.value.steps.filter((s) => s.status === 'done').length)
 const userOpen = ref(null)
-const open = computed(() => userOpen.value ?? !(done.value || stopped.value))
+const open = computed(() => userOpen.value ?? !(done.value || stopped.value || failed.value))
 const seconds = computed(() => (r.value.elapsedMs ? (r.value.elapsedMs / 1000).toFixed(1) : null))
 </script>
 
@@ -28,9 +29,10 @@ const seconds = computed(() => (r.value.elapsedMs ? (r.value.elapsedMs / 1000).t
   >
     <CollapsibleTrigger class="group/trigger flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm">
       <CheckCircle2 v-if="done" class="size-4 shrink-0 text-emerald-500" />
+      <CircleX v-else-if="failed" class="size-4 shrink-0 text-destructive" />
       <CircleSlash v-else-if="stopped" class="size-4 shrink-0 text-muted-foreground" />
       <Loader2 v-else class="size-4 shrink-0 animate-spin text-muted-foreground" />
-      <span class="font-medium">{{ done ? r.doneTitle ?? r.title : stopped ? 'Stopped' : r.title }}</span>
+      <span class="font-medium">{{ done ? r.doneTitle ?? r.title : failed ? r.failedTitle ?? 'Failed' : stopped ? 'Stopped' : r.title }}</span>
       <span class="text-xs text-muted-foreground tabular-nums">
         {{ finished }}/{{ r.steps.length }} steps<template v-if="done && seconds"> · {{ seconds }}s</template>
       </span>

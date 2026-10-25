@@ -1,23 +1,21 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
 import { toast } from '@/components/ui/toast'
-import { Download, CheckCircle2, Copy, Loader2 } from '@lucide/vue'
+import { Download, CheckCircle2, Copy, Loader2, XCircle } from '@lucide/vue'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { datasets, missionById } from '@/data/mock'
+import { api } from '@convex/_generated/api'
+import { convex, errorMessage, useQuery } from '@/lib/convex'
 import { formatNumber } from '@/lib/format'
 
 const open = defineModel('open', { type: Boolean, default: false })
 const props = defineProps({
-  // Accepted videos matching the page's filters; null hides the "Current filter" option.
-  filteredCount: { type: Number, default: null },
-  missionId: { type: String, default: 'all' },
+  datasetId: { type: String, required: true },
 })
 
 const FORMATS = [
@@ -26,53 +24,52 @@ const FORMATS = [
   { value: 'webdataset', label: 'WebDataset (.tar shards)' },
   { value: 'mp4-json', label: 'MP4 + JSON annotations' },
 ]
+// Storage integrations can't be connected yet, so only the download link works.
 const DESTINATIONS = [
-  { value: 's3', label: 's3://timefactories/datasets' },
-  { value: 'hf', label: 'Hugging Face · timefactories (private)' },
-  { value: 'link', label: 'Signed download link (24h)' },
+  { value: 'link', label: 'Download link' },
+  { value: 's3', label: 'Amazon S3 · not connected', disabled: true },
+  { value: 'gcs', label: 'Google Cloud Storage · not connected', disabled: true },
+  { value: 'hf', label: 'Hugging Face · not connected', disabled: true },
 ]
 
-const form = reactive({ scope: 'filtered', format: 'lerobot', destination: 's3', includeRejected: false, blur: true })
-const phase = ref('form') // form | running | done
-const progress = ref(0)
-const jobId = ref('')
+const { data: datasets } = useQuery(api.datasets.list, () => (open.value ? {} : 'skip'))
+const form = reactive({ datasetId: '', format: 'lerobot', destination: 'link', includeRejected: false })
+const jobId = ref(null)
+const submitting = ref(false)
+const { data: job } = useQuery(api.exports.get, () => (jobId.value ? { id: jobId.value } : 'skip'))
 
 watch(open, (v) => {
-  if (v) {
-    phase.value = 'form'
-    progress.value = 0
-    if (props.missionId !== 'all') form.scope = `ds:${props.missionId}`
-    else form.scope = props.filteredCount !== null ? 'filtered' : `ds:${datasets[0].missionId}`
+  if (!v) return
+  jobId.value = null
+  form.datasetId = props.datasetId
+})
+
+const selected = computed(() => datasets.value?.find((d) => d.id === form.datasetId))
+const phase = computed(() => {
+  if (!jobId.value) return 'form'
+  if (!job.value || job.value.status === 'queued' || job.value.status === 'packaging') return 'running'
+  return job.value.status // ready | failed
+})
+
+watch(phase, (p) => {
+  if (p === 'ready') toast.add({ title: 'Dataset export ready', type: 'success', description: `${formatNumber(job.value.videos)} videos · ${job.value.id}` })
+})
+
+async function start() {
+  submitting.value = true
+  try {
+    jobId.value = await convex.mutation(api.exports.create, { ...form })
+  } catch (e) {
+    toast.add({ title: errorMessage(e), type: 'error' })
+  } finally {
+    submitting.value = false
   }
-})
-
-const scopeCount = computed(() => {
-  if (form.scope === 'filtered') return props.filteredCount
-  const ds = datasets.find((d) => `ds:${d.missionId}` === form.scope)
-  return ds?.videos ?? 0
-})
-
-function start() {
-  phase.value = 'running'
-  jobId.value = `exp_${Math.random().toString(36).slice(2, 10)}`
-  const timer = setInterval(() => {
-    progress.value = Math.min(100, progress.value + 7 + Math.random() * 12)
-    if (progress.value >= 100) {
-      clearInterval(timer)
-      phase.value = 'done'
-      toast.add({ title: 'Dataset export complete', type: 'success', description: `${formatNumber(scopeCount.value)} videos → ${DESTINATIONS.find((d) => d.value === form.destination).label}` })
-    }
-  }, 280)
 }
 
-const destinationLabel = computed(() => DESTINATIONS.find((d) => d.value === form.destination)?.label)
-const resultPath = computed(() =>
-  form.destination === 'link'
-    ? `https://exports.capibo.work/${jobId.value}.tar?sig=••••••`
-    : form.destination === 'hf'
-      ? `hf://datasets/timefactories/${jobId.value}`
-      : `s3://timefactories/datasets/${jobId.value}/`,
-)
+function copyLink() {
+  navigator.clipboard?.writeText(job.value.url).catch(() => {})
+  toast.add({ title: 'Link copied' })
+}
 </script>
 
 <template>
@@ -80,18 +77,17 @@ const resultPath = computed(() =>
     <DialogContent class="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>Export dataset</DialogTitle>
-        <DialogDescription>Package accepted videos with labels and quality metadata for training.</DialogDescription>
+        <DialogDescription>Package video metadata, quality results and file links into a JSON manifest.</DialogDescription>
       </DialogHeader>
 
       <form v-if="phase === 'form'" id="export-form" class="grid gap-4" @submit.prevent="start">
         <div class="grid gap-2">
-          <Label>Videos</Label>
-          <Select v-model="form.scope">
-            <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+          <Label>Dataset</Label>
+          <Select v-model="form.datasetId">
+            <SelectTrigger class="w-full"><SelectValue placeholder="Loading datasets…" /></SelectTrigger>
             <SelectContent>
-              <SelectItem v-if="filteredCount !== null" value="filtered">Current filter · {{ formatNumber(filteredCount) }} videos</SelectItem>
-              <SelectItem v-for="d in datasets" :key="d.id" :value="`ds:${d.missionId}`">
-                {{ missionById[d.missionId].name }} · {{ formatNumber(d.videos) }}
+              <SelectItem v-for="d in datasets ?? []" :key="d.id" :value="d.id">
+                {{ d.missionName }} · {{ formatNumber(d.videos) }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -111,17 +107,10 @@ const resultPath = computed(() =>
             <Select v-model="form.destination">
               <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem v-for="d in DESTINATIONS" :key="d.value" :value="d.value">{{ d.label }}</SelectItem>
+                <SelectItem v-for="d in DESTINATIONS" :key="d.value" :value="d.value" :disabled="d.disabled">{{ d.label }}</SelectItem>
               </SelectContent>
             </Select>
           </div>
-        </div>
-        <div class="flex items-center justify-between gap-4 rounded-lg border p-3">
-          <div>
-            <Label for="exp-blur">Apply privacy blurring</Label>
-            <p class="text-xs text-muted-foreground">Blur faces and screens in exported frames.</p>
-          </div>
-          <Switch id="exp-blur" v-model="form.blur" />
         </div>
         <div class="flex items-center justify-between gap-4 rounded-lg border p-3">
           <div>
@@ -132,32 +121,31 @@ const resultPath = computed(() =>
         </div>
       </form>
 
-      <div v-else-if="phase === 'running'" class="grid gap-3 py-2" role="status" aria-live="polite">
-        <div class="flex items-center gap-2 text-sm">
-          <Loader2 class="size-4 animate-spin" /> Packaging {{ formatNumber(scopeCount) }} videos…
-          <span class="ml-auto tabular-nums text-muted-foreground">{{ Math.floor(progress) }}%</span>
-        </div>
-        <Progress :model-value="progress" class="h-2" aria-label="Export progress" />
-        <p class="text-xs text-muted-foreground">
-          {{ progress < 35 ? 'Collecting videos and annotations' : progress < 75 ? 'Writing shards and manifest' : 'Uploading to ' + destinationLabel }}
-        </p>
+      <div v-else-if="phase === 'running'" class="flex items-center gap-2 py-2 text-sm" role="status" aria-live="polite">
+        <Loader2 class="size-4 animate-spin" /> {{ job?.status === 'packaging' ? 'Packaging videos…' : 'Queued…' }}
       </div>
 
-      <div v-else class="grid gap-3 py-2">
+      <div v-else-if="phase === 'ready'" class="grid gap-3 py-2">
         <div class="flex items-center gap-2 text-sm font-medium">
           <CheckCircle2 class="size-5 text-status-good" /> Export ready
         </div>
         <div class="flex items-center gap-2 rounded-md border bg-muted/40 p-2">
-          <code class="flex-1 truncate font-mono text-xs">{{ resultPath }}</code>
-          <Button variant="ghost" size="icon" class="size-7" aria-label="Copy path" @click="toast.add({ title: 'Path copied' })"><Copy class="size-3.5" /></Button>
+          <a :href="job.url" target="_blank" rel="noopener" class="flex-1 truncate font-mono text-xs underline-offset-4 hover:underline">{{ job.url }}</a>
+          <Button variant="ghost" size="icon" class="size-7" aria-label="Copy link" @click="copyLink"><Copy class="size-3.5" /></Button>
         </div>
-        <p class="text-xs text-muted-foreground">Job <span class="font-mono">{{ jobId }}</span> · {{ formatNumber(scopeCount) }} videos · manifest.json included</p>
+        <p class="text-xs text-muted-foreground">Job <span class="font-mono">{{ job.id }}</span> · {{ formatNumber(job.videos) }} videos</p>
+      </div>
+
+      <div v-else class="flex items-center gap-2 py-2 text-sm" role="alert">
+        <XCircle class="size-5 text-status-critical" /> {{ job.error }}
       </div>
 
       <DialogFooter>
         <template v-if="phase === 'form'">
           <Button variant="outline" @click="open = false">Cancel</Button>
-          <Button type="submit" form="export-form" :disabled="scopeCount === 0"><Download class="size-4" /> Export {{ formatNumber(scopeCount) }} videos</Button>
+          <Button type="submit" form="export-form" :disabled="!selected?.videos || submitting">
+            <Download class="size-4" /> Export {{ formatNumber(selected?.videos) }} videos
+          </Button>
         </template>
         <Button v-else :disabled="phase === 'running'" @click="open = false">Done</Button>
       </DialogFooter>

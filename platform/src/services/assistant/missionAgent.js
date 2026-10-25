@@ -1,25 +1,25 @@
-import { planner, launchMission, setMissionStatus, resetPlanner } from '@/stores/missions'
-import { PROCESSING_FEE } from '@/data/mock'
+import { computeEstimate as priceTasks, PROCESSING_FEE, priceFor as priceForDuration } from '@convex/lib/pricing'
+import { api } from '@convex/_generated/api'
+import { planner, launchMission, resetPlanner } from '@/stores/missions'
+import { organization } from '@/stores/session'
+import { convex, errorMessage } from '@/lib/convex'
 
 /**
- * Mock mission-planning agent. It decomposes a natural-language goal into
- * recordable video tasks, estimates cost, and dispatches tasks to the
- * Capibo mobile app. Responses are deterministic templates; replace
- * `missionAgent` with a call to your planning API when it exists.
+ * Mission-planning agent. Planning is done by an LLM (convex/planner.js): it
+ * decomposes a natural-language goal into 4 or 6 filmable video tasks and picks an
+ * icon and color for each. Edits, estimates and launches are handled here with
+ * the same pricing as the API, and launching creates a real mission in Convex.
  */
 
-export const PLANNER_MODEL = 'capibo-planner-1'
+export const PLANNER_MODEL = 'gpt-5.4-mini'
 
 // Slash commands in assistant-ui's shape (`id`, `description`, `icon`), grouped by `category`.
 // `args` commands insert `/id ` for the user to finish; the rest run immediately.
 export const SLASH_COMMANDS = [
-  { id: 'plan', args: '<goal>', description: 'Break a robot goal into recordable video tasks', icon: 'sparkles', category: 'Plan' },
-  { id: 'tasks', description: 'Show the current task plan', icon: 'list-checks', category: 'Plan' },
-  { id: 'add', args: '<task>', description: 'Add a task to the current plan', icon: 'list-plus', category: 'Plan' },
-  { id: 'estimate', description: 'Estimate cost and timeline for the plan', icon: 'calculator', category: 'Mission' },
-  { id: 'launch', description: 'Dispatch the approved plan to collectors', icon: 'send', category: 'Mission' },
-  { id: 'usage', description: 'Tokens and cost used by this conversation', icon: 'gauge', category: 'Conversation' },
-  { id: 'help', description: 'What the mission planner can do', icon: 'help', category: 'Conversation' },
+  { id: 'estimate', description: 'Estimate cost and timeline for the plan', icon: 'calculator', category: 'Commands' },
+  { id: 'launch', description: 'Dispatch the approved plan to collectors', icon: 'send', category: 'Commands' },
+  { id: 'usage', description: 'Tokens and cost used by this conversation', icon: 'gauge', category: 'Commands' },
+  { id: 'help', description: 'What the mission planner can do', icon: 'help', category: 'Commands' },
 ]
 
 const DEFAULT_GUIDELINES = [
@@ -28,76 +28,13 @@ const DEFAULT_GUIDELINES = [
   'Neutral, well-lit surface; no faces in frame',
 ]
 
-const TEMPLATES = [
-  {
-    match: /fold|cloth|laundry|garment|shirt|towel/i,
-    name: 'Robotic clothes folding',
-    objective: 'Egocentric demonstrations of picking, flattening and folding everyday garments to train a clothes-folding manipulation policy.',
-    reasoning:
-      'The goal is a clothes-folding robot. A folding policy needs the full manipulation sequence, not just the fold: grasping a garment out of a pile, laying it flat, folding per garment type (t-shirts, trousers and towels have different fold patterns), and placing the result on a stack. Each step has distinct hand poses and contact events, so recording them as separate clips gives cleaner labels and lets the robot team weight hard steps. T-shirt folding has the most variation, so it gets the largest share of videos.',
-    tasks: [
-      { name: 'Pick garment from pile', description: 'Reach into a mixed laundry pile and lift a single garment by its edge.', duration: [8, 18], videos: 400 },
-      { name: 'Lay garment flat', description: 'Spread the garment flat on a table, front side up, and smooth out creases with both palms.', duration: [12, 25], videos: 700 },
-      { name: 'Fold t-shirt', description: 'Fold sleeves in, then fold the shirt in thirds lengthwise.', duration: [20, 45], videos: 900 },
-      { name: 'Fold trousers', description: 'Align the legs, fold in half lengthwise, then fold twice from the hem.', duration: [25, 50], videos: 650 },
-      { name: 'Fold towel', description: 'Fold a bath or hand towel into quarters with edges aligned.', duration: [15, 35], videos: 450 },
-      { name: 'Stack folded clothes', description: 'Place the folded item neatly on top of an existing stack.', duration: [6, 14], videos: 350 },
-    ],
-    followUps: ['pairing socks', 'hanging shirts on hangers', 'folding fitted sheets'],
-  },
-  {
-    match: /dish|plate|kitchen|cutlery/i,
-    name: 'Dish handling',
-    objective: 'Demonstrations of picking, rinsing and loading dishes to train a kitchen manipulation policy.',
-    reasoning:
-      'Dish handling mixes rigid, fragile and small objects. I will separate grasping by object class (plates, glasses, cutlery) because grasp strategies differ, cover scraping and rinsing as pre-wash steps, and add rack placement as its own task because insertion into tines is the hardest contact-rich step.',
-    tasks: [
-      { name: 'Pick plate from sink', description: 'Grasp a plate from a sink with other dishes present.', duration: [6, 14], videos: 500 },
-      { name: 'Scrape food scraps', description: 'Scrape leftovers from a plate into the bin with a fork or spatula.', duration: [6, 14], videos: 350 },
-      { name: 'Rinse dish', description: 'Rinse front and back under running water.', duration: [10, 20], videos: 400 },
-      { name: 'Load plate into rack', description: 'Insert the plate vertically between rack tines.', duration: [6, 14], videos: 600 },
-      { name: 'Load glass upside down', description: 'Place a glass upside down on the top rack.', duration: [6, 12], videos: 450 },
-      { name: 'Sort cutlery into basket', description: 'Drop forks, knives and spoons into separate basket slots.', duration: [10, 24], videos: 450 },
-    ],
-    followUps: ['unloading the dishwasher', 'stacking plates in a cupboard'],
-  },
-]
+const priceFor = (task) => priceForDuration(task.duration)
 
-function genericTemplate(goal) {
-  const object =
-    goal
-      .replace(/^(i\s+(want|need)\s+(to\s+)?)?(create|build|train|make)\s+(a|an)\s+robot\s+(that|which|to)\s+/i, '')
-      .replace(/[.!?]+$/, '')
-      .trim() || 'the target task'
+// The model's plan → the planner's working draft, priced with the shared pricing.
+function toDraft(plan) {
   return {
-    name: `Robot: ${object.charAt(0).toUpperCase()}${object.slice(1)}`.slice(0, 60),
-    objective: `Egocentric demonstrations of people performing “${object}” end to end, segmented into recordable sub-tasks for policy training.`,
-    reasoning: `The goal is a robot that ${object}. I will segment the behavior into approach, grasp, in-hand repositioning, the core manipulation, placement/reset and failure recovery. Separating these phases yields cleaner temporal labels and lets the core manipulation get the most coverage.`,
-    tasks: [
-      { name: 'Approach & inspect', description: `Walk up to the workspace and look over the items involved in “${object}”.`, duration: [6, 14], videos: 300 },
-      { name: 'Grasp target object', description: 'Pick up the primary object with a natural, stable grasp.', duration: [6, 16], videos: 500 },
-      { name: 'Reposition in hand', description: 'Adjust the grip or rotate the object into the working orientation.', duration: [5, 12], videos: 300 },
-      { name: 'Perform core manipulation', description: `Carry out the main motion of “${object}” from start to finish.`, duration: [15, 45], videos: 900 },
-      { name: 'Place & reset', description: 'Put the object in its final location and return hands to rest.', duration: [6, 14], videos: 400 },
-      { name: 'Recover from a slip', description: 'Re-grasp the object after it slips or is dropped, then continue the task.', duration: [8, 20], videos: 250 },
-    ],
-    followUps: ['a cluttered-workspace variant', 'two-handed handovers'],
-  }
-}
-
-const priceFor = (task) => {
-  const avg = (task.duration[0] + task.duration[1]) / 2
-  return Math.round((1.4 + avg * 0.055) * 100) / 100
-}
-
-function makePlan(goal) {
-  const tpl = TEMPLATES.find((t) => t.match.test(goal)) ?? genericTemplate(goal)
-  return {
-    name: tpl.name,
-    objective: tpl.objective,
-    reasoning: tpl.reasoning,
-    followUps: tpl.followUps,
-    tasks: tpl.tasks.map((t, i) => ({
+    ...plan,
+    tasks: plan.tasks.map((t, i) => ({
       id: `task-${i + 1}`,
       ...t,
       guidelines: DEFAULT_GUIDELINES,
@@ -115,7 +52,7 @@ export function makeTask(name, i) {
     name: name.charAt(0).toUpperCase() + name.slice(1),
     description: `Perform “${name}” end to end at a natural pace.`,
     duration: [10, 25],
-    videos: 400,
+    videos: 50,
     guidelines: DEFAULT_GUIDELINES,
     enabled: true,
   }
@@ -124,36 +61,7 @@ export function makeTask(name, i) {
 }
 
 export function computeEstimate(plan) {
-  const ACCEPT_RATE = 0.85
-  const enabled = plan.tasks.filter((t) => t.enabled)
-  const footageSeconds = enabled.reduce((s, t) => s + t.videos * ((t.duration[0] + t.duration[1]) / 2), 0)
-  const lines = enabled
-    .map((t) => ({
-      name: t.name,
-      videos: t.videos,
-      price: t.price,
-      subtotal: Math.round(t.videos * t.price * 100) / 100,
-    }))
-  const totalVideos = lines.reduce((s, l) => s + l.videos, 0)
-  const collection = lines.reduce((s, l) => s + l.subtotal, 0)
-  const expectedSubmissions = Math.round(totalVideos / ACCEPT_RATE)
-  const processing = Math.round(expectedSubmissions * PROCESSING_FEE * 100) / 100
-  const total = Math.round((collection + processing) * 100) / 100
-  const collectors = Math.max(60, Math.round(totalVideos / 9.5))
-  const days = Math.max(3, Math.ceil(expectedSubmissions / (collectors * 1.1)))
-  return {
-    lines,
-    totalVideos,
-    expectedSubmissions,
-    acceptRate: ACCEPT_RATE,
-    collection: Math.round(collection * 100) / 100,
-    processing,
-    total,
-    avgPrice: Math.round((collection / Math.max(1, totalVideos)) * 100) / 100,
-    collectors,
-    days,
-    hours: Math.round((footageSeconds / 3600) * 10) / 10,
-  }
+  return priceTasks(plan.tasks.filter((t) => t.enabled))
 }
 
 const fmtUsd = (n) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -162,13 +70,17 @@ const fmtUsd = (n) => n.toLocaleString('en-US', { style: 'currency', currency: '
 
 /**
  * Emit an `agent_steps` tool call and run its steps one after another:
- * each step shows a spinner, then turns green with its final detail.
+ * each step shows a spinner, then turns green with its final detail. A step
+ * with `run` waits for that async function (its return value is the detail);
+ * if it throws, the step turns red and the error is rethrown. A `detail`
+ * function is evaluated when its step finishes.
  */
-async function runSteps(ctx, { title, doneTitle }, steps) {
+async function runSteps(ctx, { title, doneTitle, failedTitle }, steps) {
   const started = Date.now()
   const result = {
     title,
     doneTitle,
+    failedTitle,
     done: false,
     steps: steps.map((s) => ({ label: s.label, detail: s.running ?? '', status: 'pending' })),
   }
@@ -176,9 +88,21 @@ async function runSteps(ctx, { title, doneTitle }, steps) {
   for (let i = 0; i < steps.length; i++) {
     result.steps[i].status = 'running'
     call.update({ result: snapshot(result) })
-    await ctx.wait(steps[i].ms ?? 650)
+    if (steps[i].run) {
+      try {
+        result.steps[i].detail = await steps[i].run()
+      } catch (e) {
+        result.steps[i].status = 'error'
+        result.steps[i].detail = errorMessage(e)
+        result.failed = true
+        call.update({ result: snapshot(result) })
+        throw e
+      }
+    } else {
+      await ctx.wait(steps[i].ms ?? 650)
+    }
     result.steps[i].status = 'done'
-    result.steps[i].detail = steps[i].detail
+    if (!steps[i].run) result.steps[i].detail = typeof steps[i].detail === 'function' ? steps[i].detail() : steps[i].detail
     call.update({ result: snapshot(result) })
   }
   await ctx.wait(250)
@@ -187,25 +111,119 @@ async function runSteps(ctx, { title, doneTitle }, steps) {
   call.update({ result: snapshot(result) })
 }
 
+/** Awaits `promise`, but rejects as soon as the user stops the run. */
+function untilCancelled(ctx, promise) {
+  return Promise.race([promise, ctx.wait(10 * 60_000).then(() => promise)])
+}
+
 // --- Intent handlers --------------------------------------------------------
+
+const PLANNING_STEPS = [
+  {
+    label: 'Breaking it into recordable tasks',
+    running: 'Segmenting the behavior…',
+    detail: (plan) => `${plan.tasks.length} tasks drafted · ${plan.name}`,
+  },
+  {
+    label: 'Choosing icons and colors',
+    running: 'Matching each task to an icon…',
+    detail: (plan) => `${new Set(plan.tasks.map((t) => t.icon)).size} icons · ${new Set(plan.tasks.map((t) => t.tone)).size} colors`,
+  },
+  { label: 'Writing recording guidelines', running: 'Framing, lighting, privacy…', detail: () => `${DEFAULT_GUIDELINES.length} guidelines shared by all tasks` },
+  {
+    label: 'Pricing each task',
+    running: 'Scaling by clip length…',
+    detail: (plan) => `Avg. ${fmtUsd(plan.tasks.reduce((s, t) => s + t.price, 0) / plan.tasks.length)} per accepted video`,
+  },
+]
+const PLANNING_STEP_MS = 900
+
+/**
+ * Plays the planning steps like a loader while the model works: each step but
+ * the last ticks over on a timer, and the last one spins until the plan is
+ * back. Details are filled in once the plan exists. Resolves to the model's
+ * response; rejects (with the running step turned red) if the call fails.
+ */
+async function runPlanningSteps(ctx, request) {
+  const started = Date.now()
+  const result = {
+    title: 'Planning your mission',
+    doneTitle: 'Mission planned',
+    failedTitle: 'Planning failed',
+    done: false,
+    steps: PLANNING_STEPS.map((s) => ({ label: s.label, detail: s.running, status: 'pending' })),
+  }
+  const call = ctx.tool('agent_steps', { title: result.title }, snapshot(result))
+  const push = () => call.update({ result: snapshot(result) })
+
+  let response
+  let error
+  let settled = false
+  const pending = untilCancelled(ctx, request).then(
+    (r) => ((response = r), (settled = true)),
+    (e) => ((error = e), (settled = true)),
+  )
+
+  // Settles only on failure, so a failed call stops the animation right away.
+  const failed = pending.then(() => error || new Promise(() => {}))
+  const last = PLANNING_STEPS.length - 1
+  for (let i = 0; i < last; i++) {
+    result.steps[i].status = 'running'
+    push()
+    await Promise.race([ctx.wait(settled ? 220 : PLANNING_STEP_MS), failed])
+    if (error) break
+    result.steps[i].status = 'done'
+    result.steps[i].detail = ''
+  }
+  const current = result.steps.findIndex((s) => s.status !== 'done')
+  result.steps[current].status = 'running'
+  push()
+  await pending
+
+  if (error) {
+    result.steps[current].status = 'error'
+    result.steps[current].detail = errorMessage(error)
+    result.failed = true
+    push()
+    throw error
+  }
+  if (!response.plan) {
+    result.steps[current].status = 'error'
+    result.steps[current].detail = 'Not a robot behavior'
+    result.failed = true
+    result.failedTitle = 'Nothing to plan'
+    push()
+    return response
+  }
+  const plan = toDraft(response.plan)
+  PLANNING_STEPS.forEach((s, i) => Object.assign(result.steps[i], { status: 'done', detail: s.detail(plan) }))
+  push()
+  await ctx.wait(250)
+  result.done = true
+  result.elapsedMs = Date.now() - started
+  push()
+  return { ...response, plan }
+}
 
 async function proposePlan(goal, ctx) {
   resetPlanner()
-  const plan = makePlan(goal)
-  await ctx.think(plan.reasoning)
-  const avgPrice = plan.tasks.reduce((s, t) => s + t.price, 0) / plan.tasks.length
-  await runSteps(ctx, { title: 'Planning your mission', doneTitle: 'Mission planned' }, [
-    { label: 'Understanding the goal', running: 'Reading your description…', detail: `Target behavior: ${plan.name.toLowerCase()}`, ms: 700 },
-    { label: 'Searching the task library', running: 'Comparing with past missions…', detail: `${2 + (plan.tasks.length % 3)} similar missions · ${plan.tasks.length * 2 + 3} reference clips`, ms: 900 },
-    { label: 'Breaking it into recordable tasks', running: 'Segmenting the behavior…', detail: `${plan.tasks.length} tasks drafted`, ms: 850 },
-    { label: 'Checking collector availability', running: 'Querying US, PT and MX…', detail: 'US, PT, MX · 1,240 eligible collectors', ms: 750 },
-    { label: 'Writing recording guidelines', running: 'Framing, lighting, privacy…', detail: `${DEFAULT_GUIDELINES.length} guidelines shared by all tasks`, ms: 600 },
-    { label: 'Pricing each task', running: 'Scaling by clip length…', detail: `Avg. ${fmtUsd(avgPrice)} per accepted video`, ms: 600 },
-  ])
+  let plan
+  try {
+    const res = await runPlanningSteps(ctx, convex.action(api.planner.planMission, { goal }))
+    ctx.usage?.record(res.usage)
+    if (!res.plan) {
+      return ctx.say(`${res.clarification} Tell me what your robot should learn, e.g. *“I want to create a robot that folds clothes.”*`)
+    }
+    plan = res.plan
+  } catch (e) {
+    if (ctx.signal.aborted) throw e
+    return ctx.say(`I couldn't plan this mission: ${errorMessage(e)}`)
+  }
+  if (plan.reasoning) await ctx.think(plan.reasoning)
   await ctx.say(`Here's how I'd break **${plan.name.toLowerCase()}** into videos your collectors can record. Each task is a separate clip type, so labels stay clean and you can weight the hard steps.`)
 
   // Stream the tasks into the plan card one at a time.
-  planner.plan = { name: plan.name, objective: plan.objective, tasks: [] }
+  planner.plan = { name: plan.name, objective: plan.objective, icon: plan.icon, tone: plan.tone, tasks: [] }
   const call = ctx.tool('propose_tasks', { goal, ...snapshot(planner.plan) }, { status: 'proposed', drafting: true })
   planner.planCallId = call.toolCallId
   for (const task of plan.tasks) {
@@ -216,12 +234,12 @@ async function proposePlan(goal, ctx) {
   await ctx.wait(200)
   call.update({ result: { status: 'proposed' } })
   await ctx.say(
-    `Review the tasks above: switch off anything you don't need, adjust video counts, or ask me to add more — for example *“add ${plan.followUps[0]}”*. When it looks right, click **Approve plan** and I'll prepare a cost estimate.`,
+    `Review the tasks above: switch off anything you don't need, adjust video counts, or ask me to add more${plan.followUps[0] ? ` — for example *“add ${plan.followUps[0]}”*` : ''}. When it looks right, click **Approve plan** and I'll prepare a cost estimate.`,
   )
 }
 
 async function addTasks(names, ctx) {
-  await ctx.think(`The user wants additional coverage: ${names.join(', ')}. I'll add ${names.length > 1 ? 'these as separate tasks' : 'this as a separate task'} with a default of 400 videos and the standard recording guidelines, then re-issue the plan for review.`)
+  await ctx.think(`The user wants additional coverage: ${names.join(', ')}. I'll add ${names.length > 1 ? 'these as separate tasks' : 'this as a separate task'} with a default of 50 videos and the standard recording guidelines, then re-issue the plan for review.`)
   const added = names.map((n, i) => makeTask(n, i))
   planner.plan.tasks.push(...added)
   planner.estimate = null
@@ -230,17 +248,57 @@ async function addTasks(names, ctx) {
   await ctx.say(`Added **${added.map((t) => t.name).join('**, **')}**. The plan now has ${planner.plan.tasks.filter((t) => t.enabled).length} active tasks. Anything else, or shall I estimate the cost?`)
 }
 
-async function removeTask(query, ctx) {
-  const task = planner.plan.tasks.find((t) => t.name.toLowerCase().includes(query.toLowerCase()))
-  if (!task) {
-    await ctx.say(`I couldn't find a task matching “${query}”. Current tasks: ${planner.plan.tasks.map((t) => t.name).join(', ')}.`)
-    return
+/**
+ * Sends a free-form message about the current plan to the model, which either
+ * returns edits (switch off, change, add tasks) or routes it: estimate, launch,
+ * a new plan, an answer, or "I didn't get …".
+ */
+async function revisePlan(message, ctx) {
+  let res
+  try {
+    const plan = {
+      name: planner.plan.name,
+      objective: planner.plan.objective ?? '',
+      tasks: planner.plan.tasks.map((t) => ({ id: t.id, name: t.name, description: t.description ?? '', duration: t.duration, videos: Number(t.videos) || 0, enabled: t.enabled })),
+    }
+    res = await untilCancelled(ctx, convex.action(api.planner.editPlan, { message, plan }))
+  } catch (e) {
+    if (ctx.signal.aborted) throw e
+    return ctx.say(`I couldn't update the plan: ${errorMessage(e)}`)
   }
-  task.enabled = false
+  ctx.usage?.record(res.usage)
+  const { intent, reply, remove, update, add } = res.edit
+  if (intent === 'estimate') return estimate(ctx)
+  if (intent === 'launch') return planner.estimate ? launch(ctx) : estimate(ctx)
+  if (intent === 'new_plan') return proposePlan(message, ctx)
+  if (intent !== 'edit') return ctx.say(reply)
+
+  const byId = new Map(planner.plan.tasks.map((t) => [t.id, t]))
+  const removed = remove.map((id) => byId.get(id)).filter((t) => t.enabled)
+  removed.forEach((t) => (t.enabled = false))
+  const changed = update.map(({ id, ...patch }) => {
+    const task = Object.assign(byId.get(id), patch)
+    task.price = priceFor(task)
+    return task
+  })
+  const offset = planner.plan.tasks.length
+  const added = add.map((t, i) => ({ id: `task-${Date.now().toString(36)}-${offset + i}`, ...t, guidelines: DEFAULT_GUIDELINES, price: priceFor(t), enabled: true }))
+  planner.plan.tasks.push(...added)
+  if (removed.length + changed.length + added.length === 0) return ctx.say(reply)
+
   planner.estimate = null
-  const call = ctx.tool('propose_tasks', { goal: 'revision', ...snapshot(planner.plan) }, { status: 'revised', removed: [task.name] })
+  const call = ctx.tool(
+    'propose_tasks',
+    { goal: 'revision', ...snapshot(planner.plan) },
+    { status: 'revised', added: added.map((t) => t.name), removed: removed.map((t) => t.name), changed: changed.map((t) => t.name) },
+  )
   planner.planCallId = call.toolCallId
-  await ctx.say(`Removed **${task.name}** from the plan. You can switch it back on in the card above.`)
+  await ctx.say(`${reply} The plan now has ${planner.plan.tasks.filter((t) => t.enabled).length} active tasks.`)
+}
+
+function balanceDetail(est) {
+  const balance = organization.value?.balance ?? 0
+  return balance >= est.total ? 'Balance covers this mission' : `${fmtUsd(est.total - balance)} short — add credits before launching`
 }
 
 async function estimate(ctx) {
@@ -251,10 +309,10 @@ async function estimate(ctx) {
     { label: 'Totalling footage', running: 'Summing clip lengths…', detail: `${est.hours} hours across ${est.lines.length} tasks`, ms: 600 },
     { label: 'Forecasting acceptance rate', running: 'Using similar missions…', detail: `${Math.round(est.acceptRate * 100)}% expected → ${est.expectedSubmissions.toLocaleString('en-US')} submissions`, ms: 750 },
     { label: 'Sizing the collector pool', running: 'Matching skills and regions…', detail: `${est.collectors} collectors · ~${est.days} days`, ms: 700 },
-    { label: 'Checking your credit balance', running: 'Reading billing…', detail: 'Balance covers this mission', ms: 500 },
+    { label: 'Checking your credit balance', running: 'Reading billing…', detail: balanceDetail(est), ms: 500 },
   ])
   await ctx.think(
-    `Pricing per accepted video scales with clip length. With an expected acceptance rate of ${Math.round(est.acceptRate * 100)}%, ${est.totalVideos.toLocaleString('en-US')} accepted videos need about ${est.expectedSubmissions.toLocaleString('en-US')} submissions, each charged a $${PROCESSING_FEE.toFixed(2)} QA processing fee. Collector capacity in US, PT and MX supports ~${est.collectors} active collectors for this skill profile.`,
+    `Pricing per accepted video scales with clip length. With an expected acceptance rate of ${Math.round(est.acceptRate * 100)}%, ${est.totalVideos.toLocaleString('en-US')} accepted videos need about ${est.expectedSubmissions.toLocaleString('en-US')} submissions, each charged a $${PROCESSING_FEE.toFixed(2)} QA processing fee. Collector capacity in the US supports ~${est.collectors} active collectors for this skill profile.`,
   )
   planner.estimate = est
   const call = ctx.tool('estimate_cost', { plan: planner.plan.name, tasks: est.lines.length }, est)
@@ -270,42 +328,33 @@ async function launch(ctx) {
   }
   if (planner.launchedMissionId) return ctx.say(`This plan is already live as **${planner.launchedMissionId}**.`)
   const est = planner.estimate
-  const id = launchMission(planner.plan, est)
+  let id
+  try {
+    id = await launchMission(planner.plan, DEFAULT_GUIDELINES)
+  } catch (e) {
+    return ctx.say(`I couldn't launch the mission: ${errorMessage(e)} You can add credits under **Billing**, then ask me to launch again.`)
+  }
   planner.launchedMissionId = id
   await ctx.say(`Launching **${planner.plan.name}** as mission **${id}**.`)
+  // Only steps that really happened: the mission exists and is open in the app.
+  // Collectors aren't notified individually, so there's no device count to show.
   const steps = [
     { label: `Create mission ${id}`, detail: `${est.lines.length} tasks · ${est.totalVideos.toLocaleString('en-US')} video target` },
-    { label: 'Generate recording guidelines', detail: 'Instructions and example frames per task' },
-    { label: 'Localize instructions', detail: 'English, Spanish, Portuguese' },
-    { label: 'Match collectors', detail: `Region, device and rating ≥ 4.6 → ${est.collectors} collectors` },
-    { label: 'Push tasks to Capibo mobile app', detail: `0 / ${est.collectors} devices notified` },
-    { label: 'Await first submissions', detail: 'QA pipeline armed' },
+    { label: 'Attach recording guidelines', detail: 'The same guidelines for every task' },
+    { label: 'Publish tasks to the Capibo mobile app', detail: 'Collectors see them the next time they open the app' },
   ].map((s) => ({ ...s, status: 'pending' }))
-  const result = { missionId: id, steps, notified: 0, collectors: est.collectors, done: false }
-  const call = ctx.tool('dispatch_mission', { missionId: id, collectors: est.collectors }, snapshot(result))
-  for (let i = 0; i < steps.length; i++) {
-    result.steps[i].status = 'running'
+  const result = { missionId: id, steps, done: false }
+  const call = ctx.tool('dispatch_mission', { missionId: id }, snapshot(result))
+  for (const step of result.steps) {
+    step.status = 'running'
     call.update({ result: snapshot(result) })
-    if (i === 4) {
-      for (let n = 0; n <= est.collectors; n += Math.ceil(est.collectors / 12)) {
-        result.notified = Math.min(n, est.collectors)
-        result.steps[i].detail = `${result.notified} / ${est.collectors} devices notified`
-        call.update({ result: snapshot(result) })
-        await ctx.wait(160)
-      }
-      result.notified = est.collectors
-      result.steps[i].detail = `${est.collectors} / ${est.collectors} devices notified`
-    } else {
-      await ctx.wait(i === 5 ? 1600 : 700 + i * 120)
-    }
-    if (i === 5) result.steps[i].detail = 'First video received from C-58214 · in QA'
-    result.steps[i].status = 'done'
+    await ctx.wait(500)
+    step.status = 'done'
     call.update({ result: snapshot(result) })
   }
   result.done = true
   call.update({ result: snapshot(result) })
-  setMissionStatus(id, 'active')
-  await ctx.say(`**${id} is live.** Tasks are on ${est.collectors} collectors' phones and the first video is already in quality review. You can follow progress under **Missions → Active**, and accepted videos will appear in **Datasets** as they pass QA.`)
+  await ctx.say(`**${id} is live.** No videos have been submitted yet. You can follow progress under **Missions → Active**, and accepted videos will appear in **Datasets** as they pass QA.`)
 }
 
 // `/usage` normally opens the composer's usage dialog; this covers typed questions.
@@ -361,19 +410,14 @@ export async function missionAgent(input, ctx) {
   }
 
   if (planner.plan && !planner.launchedMissionId) {
-    if (/\b(launch|dispatch|start|go live|send (it|them)|approve and launch)\b/.test(lower) && planner.estimate) return launch(ctx)
-    if (/\b(approve|looks good|estimate|cost|price|budget|how much)\b/.test(lower)) return estimate(ctx)
-    const remove = lower.match(/\b(?:remove|drop|delete|skip)\s+(?:the\s+)?(.+?)(?:\s+task)?[.!]?$/)
-    if (remove) return removeTask(remove[1], ctx)
-    const add = text.match(/\b(?:add|include|also)\s+(?:a\s+task\s+(?:for|of)\s+)?(.+?)[.!]?$/i)
-    if (add) {
-      const names = add[1].split(/,\s*|\s+and\s+/).map((s) => s.trim()).filter(Boolean)
-      return addTasks(names, ctx)
-    }
-    if (/\badjust\b/.test(lower)) {
+    // The plan and estimate cards' buttons send these exact messages; skip the model for them.
+    if (/^approve and launch the mission\.$/.test(lower) && planner.estimate) return launch(ctx)
+    if (/^looks good — approve the plan/.test(lower)) return estimate(ctx)
+    if (/^i'd like to adjust the tasks first\.$/.test(lower)) {
       planner.estimate = null
-      return ctx.say('Sure — edit the tasks in the plan card above (toggle, rename video counts), or tell me what to add or remove. Click **Approve plan** when you are done.')
+      return ctx.say('Sure — edit the tasks in the plan card above, or tell me what to change, e.g. *“remove the cleaning task and double the grasping videos”*. Click **Approve plan** when you are done.')
     }
+    if (!/^(help|what can you do)/.test(lower)) return revisePlan(text, ctx)
   }
 
   if (/^(help|what can you do)/.test(lower)) return help(ctx)

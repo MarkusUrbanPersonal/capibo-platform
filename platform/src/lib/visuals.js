@@ -1,9 +1,30 @@
 import {
-  BedDouble, Bot, Box, Brush, Cable, ChefHat, DoorOpen, Droplets, Dumbbell, Egg, Eye, FoldHorizontal, FoldVertical,
-  Footprints, Grab, Hand, Layers,
-  Move, Package, Plug, Shirt, ShoppingBag, ShoppingCart, Sparkles, Store, Utensils, UtensilsCrossed,
-  Video, Wind, Wine,
+  Apple, Archive, Baby, Backpack, Bath, Battery, BedDouble, Bike, Bolt, BookOpen, Bot, Box, Briefcase, Brush, Cable,
+  Camera, Car, Carrot, ChefHat, Coffee, Cog, Container, CookingPot, Cpu, Cuboid, Dog, DoorOpen, Drill, Droplets,
+  Dumbbell, Egg, Eye, Fish, Flame, FlaskConical, Flower2, FoldHorizontal, FoldVertical, Footprints, Forklift,
+  Gamepad2, Gem, Gift, Glasses, GlassWater, Grab, Hammer, Hand, HandHelping, Handshake, Headphones, Key, Keyboard,
+  Lamp, Laptop, Layers, Leaf, Lightbulb, Mail, Microscope, Microwave, Milk, Move, Music, Package, Paintbrush,
+  PaintRoller, PawPrint, Pencil, Pill, Pipette, Pizza, Plug, Pointer, Printer, Puzzle, Recycle, Refrigerator, Repeat,
+  RotateCw, Ruler, Sandwich, Scale, ScanBarcode, Scissors, Shirt, ShoppingBag, ShoppingCart, Shovel, ShowerHead,
+  Smartphone, Snowflake, Sofa, Soup, Sparkles, SprayCan, Sprout, Stethoscope, Store, Syringe, Tag, Timer, Tractor,
+  Trash2, TreePine, Truck, Utensils, UtensilsCrossed, Video, Warehouse, WashingMachine, Watch, Weight, Wheat, Wind,
+  Wine, Wrench,
 } from '@lucide/vue'
+import { isIcon, isTone } from '@convex/lib/visuals'
+
+/** Icon components by name: the vocabulary in convex/lib/visuals.js that the mission planner picks from. */
+export const ICONS = {
+  Apple, Archive, Baby, Backpack, Bath, Battery, BedDouble, Bike, Bolt, BookOpen, Bot, Box, Briefcase, Brush, Cable,
+  Camera, Car, Carrot, ChefHat, Coffee, Cog, Container, CookingPot, Cpu, Cuboid, Dog, DoorOpen, Drill, Droplets,
+  Dumbbell, Egg, Eye, Fish, Flame, FlaskConical, Flower2, FoldHorizontal, FoldVertical, Footprints, Forklift,
+  Gamepad2, Gem, Gift, Glasses, GlassWater, Grab, Hammer, Hand, HandHelping, Handshake, Headphones, Key, Keyboard,
+  Lamp, Laptop, Layers, Leaf, Lightbulb, Mail, Microscope, Microwave, Milk, Move, Music, Package, Paintbrush,
+  PaintRoller, PawPrint, Pencil, Pill, Pipette, Pizza, Plug, Pointer, Printer, Puzzle, Recycle, Refrigerator, Repeat,
+  RotateCw, Ruler, Sandwich, Scale, ScanBarcode, Scissors, Shirt, ShoppingBag, ShoppingCart, Shovel, ShowerHead,
+  Smartphone, Snowflake, Sofa, Soup, Sparkles, SprayCan, Sprout, Stethoscope, Store, Syringe, Tag, Timer, Tractor,
+  Trash2, TreePine, Truck, Utensils, UtensilsCrossed, Video, Warehouse, WashingMachine, Watch, Weight, Wheat, Wind,
+  Wine, Wrench,
+}
 
 /**
  * Colored icon tiles for missions and tasks, picked from keywords in the name.
@@ -64,9 +85,15 @@ function hashTone(name) {
   return TONE_ORDER[h % TONE_ORDER.length]
 }
 
-/** { icon, tone } for a task or mission name. */
-export function visualFor(name = '') {
+/**
+ * { icon, tone, color } for a task or mission. A stored `icon`/`tone` (picked by the
+ * planner) wins; otherwise both come from keywords in the name. `color` is the tone's
+ * solid hue, for chart marks that should match the icon tile.
+ */
+export function visualFor(name = '', stored = null) {
   const rule = RULES.find(([re]) => re.test(name))
-  if (rule) return { icon: rule[1], tone: TONES[rule[2]] }
-  return { icon: Video, tone: TONES[hashTone(name)] }
+  const [fallbackIcon, fallbackKey] = rule ? [rule[1], rule[2]] : [Video, hashTone(name)]
+  const icon = isIcon(stored?.icon) ? ICONS[stored.icon] : fallbackIcon
+  const key = isTone(stored?.tone) ? stored.tone : fallbackKey
+  return { icon, tone: TONES[key], color: `var(--color-${key}-500)` }
 }

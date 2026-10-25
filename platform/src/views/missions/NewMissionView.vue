@@ -14,6 +14,8 @@ import { missionAgent, PLANNER_MODEL, SLASH_COMMANDS } from '@/services/assistan
 import { resetPlanner } from '@/stores/missions'
 
 const assistant = getAssistant('missions', { agent: missionAgent, model: PLANNER_MODEL, onReset: resetPlanner })
+// Every visit to this view starts a fresh mission conversation.
+assistant.reset()
 
 const tools = {
   agent_steps: markRaw(AgentStepsTool),

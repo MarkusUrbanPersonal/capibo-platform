@@ -10,6 +10,7 @@ import {
  * The store owns messages in assistant-ui's ThreadMessageLike shape. An
  * "agent" is an async function `(text, ctx) => void` that streams reasoning,
  * text and tool calls into the in-progress assistant message through `ctx`.
+ * Agents that call a model report its real token usage via `ctx.usage.record`.
  * To connect a real backend later, swap this runtime for `AISDKChat()` (or
  * implement `agent` with a fetch to your API) — the UI does not change.
  */
@@ -67,7 +68,6 @@ export function createMockAgentRuntime({ agent, usage, suggestions = [] }) {
       for (const token of tokens) {
         acc += token
         patchPart(index, { text: acc })
-        usage?.add(Math.ceil(token.length / 3.5))
         await wait(speed + Math.random() * speed)
       }
       return index
@@ -89,7 +89,6 @@ export function createMockAgentRuntime({ agent, usage, suggestions = [] }) {
           argsText: JSON.stringify(args),
           result,
         })
-        usage?.add(Math.ceil(JSON.stringify(args).length / 4))
         return {
           toolCallId,
           update: (patch) =>
@@ -129,7 +128,6 @@ export function createMockAgentRuntime({ agent, usage, suggestions = [] }) {
   }
 
   const appendUser = (text) => {
-    usage?.add(Math.ceil(text.length / 3.5))
     messages = [
       ...messages,
       { id: freshId('user'), role: 'user', content: [{ type: 'text', text }], createdAt: new Date() },

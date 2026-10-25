@@ -4,7 +4,7 @@ import { useAuiState } from '@assistant-ui/vue'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatCompact, formatNumber } from '@/lib/format'
 
-// Usage report for the current conversation, opened by the `/usage` command (mocked).
+// Usage report for the current conversation, opened by the `/usage` command. Counts real model calls only.
 const open = defineModel('open', { type: Boolean, default: false })
 const props = defineProps({
   usage: { type: Object, required: true },
@@ -19,7 +19,9 @@ const dash = computed(() => `${(Math.max(props.usage.percent, props.usage.tokens
 const rows = computed(() => [
   { label: 'Model', value: props.usage.model, mono: true },
   { label: 'Messages', value: formatNumber(messages.value) },
-  { label: 'Tokens used', value: formatNumber(props.usage.tokens) },
+  { label: 'Model calls', value: formatNumber(props.usage.requests) },
+  { label: 'Input tokens', value: formatNumber(props.usage.inputTokens) },
+  { label: 'Output tokens', value: formatNumber(props.usage.outputTokens) },
   { label: 'Context window', value: formatNumber(props.usage.contextWindow) },
   { label: 'Session cost', value: `$${props.usage.cost.toFixed(4)}` },
 ])
@@ -30,7 +32,7 @@ const rows = computed(() => [
     <DialogContent class="gap-5 sm:max-w-sm">
       <DialogHeader>
         <DialogTitle>Usage</DialogTitle>
-        <DialogDescription>Tokens and cost for this conversation. Billed separately from video credits.</DialogDescription>
+        <DialogDescription>Tokens and cost of the model calls in this conversation, as reported by the model provider.</DialogDescription>
       </DialogHeader>
 
       <div class="flex items-center gap-4 rounded-xl border bg-muted/30 p-4">
@@ -63,8 +65,6 @@ const rows = computed(() => [
           <dd class="tabular-nums" :class="r.mono ? 'font-mono text-xs' : ''">{{ r.value }}</dd>
         </div>
       </dl>
-
-      <p class="text-[11px] text-muted-foreground">Planner responses are simulated in this version.</p>
     </DialogContent>
   </Dialog>
 </template>

@@ -1,13 +1,13 @@
 <script setup>
 import { computed } from 'vue'
-import { Check, Circle, Loader2 } from '@lucide/vue'
+import { Check, Circle, Loader2, X } from '@lucide/vue'
 
 /**
  * Agent progress steps: a spinner while a step runs, a green check once it
- * is done. With `reveal`, steps appear only when they start.
+ * is done, a red cross if it failed. With `reveal`, steps appear only when they start.
  */
 const props = defineProps({
-  steps: { type: Array, required: true }, // [{ label, detail?, status: 'pending' | 'running' | 'done' }]
+  steps: { type: Array, required: true }, // [{ label, detail?, status: 'pending' | 'running' | 'done' | 'error' }]
   reveal: { type: Boolean, default: false },
 })
 
@@ -29,9 +29,11 @@ const visible = computed(() => (props.reveal ? props.steps.filter((s) => s.statu
           'bg-emerald-500 text-white shadow-[0_0_0_3px] shadow-emerald-500/15': step.status === 'done',
           'bg-background text-foreground': step.status === 'running',
           'bg-background text-muted-foreground/50': step.status === 'pending',
+          'bg-destructive text-white': step.status === 'error',
         }"
       >
         <Check v-if="step.status === 'done'" class="size-3" stroke-width="3" />
+        <X v-else-if="step.status === 'error'" class="size-3" stroke-width="3" />
         <Loader2 v-else-if="step.status === 'running'" class="size-4 animate-spin" />
         <Circle v-else class="size-4" />
       </span>

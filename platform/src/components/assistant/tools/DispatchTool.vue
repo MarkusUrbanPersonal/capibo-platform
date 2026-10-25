@@ -28,9 +28,9 @@ const progress = computed(() => Math.round((done.value / total.value) * 100))
             <Smartphone class="size-4" />
           </div>
           <div>
-            <CardTitle class="text-sm">Dispatching {{ result.missionId }} to the Capibo app</CardTitle>
+            <CardTitle class="text-sm">{{ result.done ? 'Published' : 'Publishing' }} {{ result.missionId }} to the Capibo app</CardTitle>
             <CardDescription class="text-xs">
-              {{ result.notified }} / {{ result.collectors }} collector devices notified
+              {{ result.done ? 'Open to collectors · no submissions yet' : 'Publishing tasks…' }}
             </CardDescription>
           </div>
         </div>

@@ -1,7 +1,7 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Download, Search, X, ChevronLeft, ChevronRight, Target, Globe2, ListChecks } from '@lucide/vue'
+import { ArrowLeft, Download, Search, X, ChevronLeft, ChevronRight, Target } from '@lucide/vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import VideoDetailSheet from '@/components/datasets/VideoDetailSheet.vue'
 import ExportDialog from '@/components/datasets/ExportDialog.vue'
@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
-import { datasetById, missionById, videos } from '@/data/mock'
+import { api } from '@convex/_generated/api'
+import { useQuery } from '@/lib/convex'
 import { visualFor } from '@/lib/visuals'
 import { formatDate, formatDuration, formatNumber } from '@/lib/format'
 
@@ -26,29 +27,18 @@ const selected = ref(null)
 const detailOpen = ref(false)
 const exportOpen = ref(false)
 
-const dataset = computed(() => datasetById[route.params.id] ?? null)
-const mission = computed(() => (dataset.value ? missionById[dataset.value.missionId] : null))
-const visual = computed(() => visualFor(mission.value?.name ?? ''))
-const version = computed(() => dataset.value?.name.split(' · ').at(-1) ?? '')
+const { data: dataset } = useQuery(api.datasets.get, () => ({ id: String(route.params.id) }))
+const { data: videos } = useQuery(api.datasets.videos, () => (dataset.value ? { id: dataset.value.id } : 'skip'))
+const visual = computed(() => visualFor(dataset.value?.missionName ?? '', { icon: dataset.value?.missionIcon, tone: dataset.value?.missionTone }))
+const loading = computed(() => videos.value === undefined)
 
-// Simulated fetch so the skeleton state is visible; repeats when switching datasets.
-const loading = ref(true)
-let timer
-function load() {
-  loading.value = true
-  clearTimeout(timer)
-  timer = setTimeout(() => (loading.value = false), 450)
-}
-load()
-onBeforeUnmount(() => clearTimeout(timer))
 watch(() => route.params.id, () => {
   search.value = ''
   status.value = 'all'
-  load()
 })
 watch([search, status], () => (page.value = 1))
 
-const datasetVideos = computed(() => videos.filter((v) => v.missionId === dataset.value?.missionId))
+const datasetVideos = computed(() => videos.value ?? [])
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
   return datasetVideos.value.filter(
@@ -63,12 +53,10 @@ const pageRows = computed(() => filtered.value.slice((page.value - 1) * PAGE_SIZ
 const hasFilters = computed(() => search.value || status.value !== 'all')
 
 const stats = computed(() => {
-  const accepted = datasetVideos.value.filter((v) => v.status === 'accepted')
-  const avgQuality = accepted.length ? Math.round(accepted.reduce((s, v) => s + v.quality, 0) / accepted.length) : null
   return [
     { label: 'Accepted videos', value: formatNumber(dataset.value?.videos) },
-    { label: 'Footage', value: `${formatNumber(dataset.value?.hours)} h` },
-    { label: 'Avg. quality', value: avgQuality ?? '—' },
+    { label: 'Footage', value: `${dataset.value?.hours ?? 0} h` },
+    { label: 'Avg. quality', value: dataset.value?.avgQuality ?? '—' },
     { label: 'Updated', value: dataset.value ? formatDate(dataset.value.updatedAt) : '—' },
   ]
 })
@@ -86,37 +74,32 @@ function openVideo(v) {
 
 <template>
   <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
-    <div v-if="!dataset" class="flex flex-col items-center gap-3 py-24 text-center">
+    <p v-if="dataset === undefined" class="py-24 text-center text-sm text-muted-foreground" role="status">Loading dataset…</p>
+
+    <div v-else-if="!dataset" class="flex flex-col items-center gap-3 py-24 text-center">
       <p class="text-sm text-muted-foreground">This dataset doesn't exist or has no accepted videos yet.</p>
       <Button variant="outline" @click="router.push({ name: 'datasets' })"><ArrowLeft class="size-4" /> All datasets</Button>
     </div>
 
     <template v-else>
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div class="flex min-w-0 items-start gap-3">
-          <Button variant="ghost" size="icon" class="-ml-2 mt-1.5 size-8 shrink-0 text-muted-foreground" aria-label="Back to datasets" @click="router.push({ name: 'datasets' })">
-            <ArrowLeft class="size-4" />
-          </Button>
-          <span class="mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-xl" :class="visual.tone">
-            <component :is="visual.icon" class="size-5" aria-hidden="true" />
+      <!-- Extra top padding gives the detail title breathing room below the breadcrumb -->
+      <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-1 sm:pt-3">
+        <div class="flex min-w-0 items-center gap-4">
+          <span class="flex size-12 shrink-0 items-center justify-center rounded-xl" :class="visual.tone">
+            <component :is="visual.icon" class="size-6" aria-hidden="true" />
           </span>
           <div class="min-w-0">
-            <h1 class="truncate text-2xl font-semibold tracking-tight">{{ mission.name }}</h1>
-            <p class="mt-0.5 line-clamp-1 text-sm text-muted-foreground">{{ mission.description }}</p>
-            <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span class="font-mono">{{ dataset.id }}</span>
-              <span class="rounded border px-1 font-mono text-[11px]">{{ version }}</span>
-              <span class="flex items-center gap-1"><ListChecks class="size-3" /> {{ mission.tasks.length }} tasks</span>
-              <span class="flex items-center gap-1"><Globe2 class="size-3" /> {{ mission.regions.join(', ') }}</span>
-              <StatusBadge :status="mission.status" class="h-5 text-[11px]" />
+            <div class="flex items-center gap-2.5">
+              <h1 class="truncate text-2xl font-semibold tracking-tight">{{ dataset.missionName }}</h1>
             </div>
+            <p class="mt-0.5 line-clamp-1 text-sm text-muted-foreground">{{ dataset.description }}</p>
           </div>
         </div>
         <div class="flex shrink-0 gap-2">
-          <Button variant="outline" @click="router.push({ name: 'mission-detail', params: { id: mission.id } })"><Target class="size-4" /> Mission</Button>
+          <Button v-if="!dataset.missionDeleted" variant="outline" @click="router.push({ name: 'mission-detail', params: { id: dataset.missionId } })"><Target class="size-4" /> Mission</Button>
           <Button @click="exportOpen = true"><Download class="size-4" /> Export</Button>
         </div>
-      </div>
+      </header>
 
       <dl class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
         <div v-for="s in stats" :key="s.label" class="bg-background px-4 py-3">
@@ -215,8 +198,7 @@ function openVideo(v) {
       <VideoDetailSheet v-model:open="detailOpen" :video="selected" />
       <ExportDialog
         v-model:open="exportOpen"
-        :filtered-count="filtered.filter((v) => v.status === 'accepted').length"
-        :mission-id="dataset.missionId"
+        :dataset-id="dataset.id"
       />
     </template>
   </div>

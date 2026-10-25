@@ -1,30 +1,28 @@
-import { computed, reactive } from 'vue'
-import { missionsWithStats, isoDay, TODAY } from '@/data/mock'
+import { computed, effectScope, reactive } from 'vue'
+import { api } from '@convex/_generated/api'
+import { convex, useQuery } from '@/lib/convex'
+import { auth } from '@/stores/auth'
 
 /**
- * Client-side mission state: existing missions from the mock API plus
- * missions launched from the planner during this session, and the
- * planner's working draft (shared between the agent and its tool UIs).
+ * The organization's missions, kept live from Convex for the lifetime of the
+ * app (undefined while loading), plus the mission planner's working draft
+ * (shared between the agent and its tool UIs).
  */
-const state = reactive({
-  launched: [],
-  seeded: missionsWithStats.map((m) => ({ ...m })),
-  planner: {
-    plan: null, // { name, objective, tasks: [...] }
-    planCallId: null, // tool call id of the plan card that is currently editable
-    estimate: null,
-    estimateCallId: null,
-    launchedMissionId: null,
-  },
+const { data } = effectScope(true).run(() => useQuery(api.missions.list, () => (auth.isAuthenticated ? {} : 'skip')))
+
+export const missionsLoaded = computed(() => data.value !== undefined)
+export const allMissions = computed(() => data.value ?? [])
+
+export const planner = reactive({
+  plan: null, // { name, objective, icon, tone, tasks: [...] }
+  planCallId: null, // tool call id of the plan card that is currently editable
+  estimate: null,
+  estimateCallId: null,
+  launchedMissionId: null,
 })
 
-export const planner = state.planner
-
-export const allMissions = computed(() => [...state.launched, ...state.seeded])
-export const launchedMissions = computed(() => state.launched)
-
 export function resetPlanner() {
-  Object.assign(state.planner, {
+  Object.assign(planner, {
     plan: null,
     planCallId: null,
     estimate: null,
@@ -33,32 +31,30 @@ export function resetPlanner() {
   })
 }
 
-export function launchMission(plan, estimate) {
-  const id = `MSN-${1049 + state.launched.length}`
-  state.launched.unshift({
-    id,
+// Collection runs in the US only for now.
+const DEFAULT_REGIONS = ['US']
+
+/** Creates and dispatches the planned mission. Returns its id; throws if the balance doesn't cover it. */
+export function launchMission(plan, guidelines) {
+  return convex.mutation(api.missions.create, {
     name: plan.name,
     description: plan.objective,
-    status: 'dispatching',
-    start: isoDay(TODAY),
-    end: null,
-    target: estimate.totalVideos,
-    pricePerVideo: estimate.avgPrice,
-    regions: ['US', 'PT', 'MX'],
-    tasks: plan.tasks.map((t, i) => ({ id: `T-${i + 1}`, name: t.name, labels: [] })),
-    submitted: 0,
-    processing: 0,
-    processed: 0,
-    accepted: 0,
-    rejected: 0,
-    cost: 0,
-    progress: 0,
-    isNew: true,
+    regions: DEFAULT_REGIONS,
+    guidelines,
+    ...(plan.icon ? { icon: plan.icon } : {}),
+    ...(plan.tone ? { tone: plan.tone } : {}),
+    tasks: plan.tasks
+      .filter((t) => t.enabled)
+      .map((t) => ({
+        name: t.name,
+        instructions: t.description,
+        videos: t.videos,
+        duration: t.duration,
+        ...(t.icon ? { icon: t.icon } : {}),
+        ...(t.tone ? { tone: t.tone } : {}),
+      })),
   })
-  return id
 }
 
-export function setMissionStatus(id, status) {
-  const m = allMissions.value.find((x) => x.id === id)
-  if (m) m.status = status
-}
+export const setMissionStatus = (id, status) => convex.mutation(api.missions.setStatus, { id, status })
+export const deleteMission = (id) => convex.mutation(api.missions.remove, { id })

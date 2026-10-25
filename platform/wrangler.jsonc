@@ -1,0 +1,11 @@
+{
+  // Static SPA on Workers assets. Deploy with: npm run build && npx wrangler deploy
+  "name": "super-glade-4b36",
+  "compatibility_date": "2026-10-24",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for unknown paths so HTML5-history routes like /missions work on refresh.
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [{ "pattern": "app.capibo.work", "custom_domain": true }]
+}

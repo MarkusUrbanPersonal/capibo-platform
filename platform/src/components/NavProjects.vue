@@ -20,6 +20,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { setMissionStatus } from '@/stores/missions';
+import { errorMessage } from '@/lib/convex';
 
 defineProps({
   projects: { type: Array, required: true },
@@ -29,8 +30,12 @@ const { isMobile } = useSidebar();
 const route = useRoute();
 const router = useRouter();
 
-function pause(item) {
-  setMissionStatus(item.id, "paused");
+async function pause(item) {
+  try {
+    await setMissionStatus(item.id, "paused");
+  } catch (e) {
+    return toast.add({ title: errorMessage(e), type: "error" });
+  }
   toast.add({ title: `${item.name} paused`, description: "Collectors stop receiving new tasks. Resume from the mission page." });
 }
 </script>
@@ -66,7 +71,7 @@ function pause(item) {
               <Eye class="text-muted-foreground" />
               <span>View mission</span>
             </DropdownMenuItem>
-            <DropdownMenuItem @click="router.push(datasetRoute(item.id))">
+            <DropdownMenuItem @click="router.push(datasetRoute(item))">
               <Database class="text-muted-foreground" />
               <span>Open videos</span>
             </DropdownMenuItem>

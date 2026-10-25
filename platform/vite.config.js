@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: [
+      { find: '@convex', replacement: fileURLToPath(new URL('./convex', import.meta.url)) },
       { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
       // assistant-ui's shared runtime imports React hook names. Per the
       // assistant-ui Vue docs, resolve them through the tap standalone shim

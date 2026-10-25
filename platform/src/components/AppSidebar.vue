@@ -24,9 +24,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { launchedMissions } from '@/stores/missions';
+import { allMissions } from '@/stores/missions';
 import { resetAssistant } from '@/services/assistant';
-import { currentUser, organization } from '@/data/mock';
+import { currentUser, organization } from '@/stores/session';
 
 const props = defineProps({
   side: { type: String, required: false },
@@ -58,12 +58,12 @@ const navMain = [
   { title: "Billing", to: { name: "billing" }, match: ["billing"], icon: CreditCard },
 ];
 
-// Quick links to missions created in this session; the sidebar starts empty.
+// Quick links to the missions that are collecting right now.
 const activeMissions = computed(() =>
-  launchedMissions.value
+  allMissions.value
     .filter((m) => m.status === "active" || m.status === "dispatching")
     .slice(0, 5)
-    .map((m) => ({ id: m.id, name: m.name, status: m.status })),
+    .map((m) => ({ id: m.id, name: m.name, status: m.status, datasetId: m.datasetId })),
 );
 
 const navSecondary = [
@@ -78,10 +78,7 @@ const navSecondary = [
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" as-child class="h-14 hover:bg-transparent active:bg-transparent">
-            <RouterLink :to="{ name: 'home' }" aria-label="Capibo home" class="gap-1.5">
-              <span class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#efede4] p-1 group-data-[collapsible=icon]:size-8">
-                <img src="/mascot.png" alt="" class="size-full object-contain" />
-              </span>
+            <RouterLink :to="{ name: 'home' }" aria-label="Capibo home">
               <span class="flex min-w-0 items-center group-data-[collapsible=icon]:hidden">
                 <CapiboLogo class="h-8 w-auto text-sidebar-foreground" />
               </span>

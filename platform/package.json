@@ -5,13 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "convex dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup:auth": "node scripts/setup-convex-auth.mjs",
+    "seed": "convex run seed:promoCodes"
   },
   "dependencies": {
     "@assistant-ui/core": "^0.3.31",
     "@assistant-ui/tap": "^0.9.24",
     "@assistant-ui/vue": "^0.0.5",
+    "@auth/core": "^0.41.3",
+    "@convex-dev/auth": "^0.0.96",
+    "@convex-dev/rate-limiter": "^0.4.2",
     "@lucide/vue": "^1.61.0",
     "@tailwindcss/vite": "^4.3.3",
     "@unovis/ts": "^1.7.1",
@@ -19,6 +25,7 @@
     "@vueuse/core": "^15.0.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
+    "convex": "^1.48.0",
     "markdown-it": "^15.0.3",
     "reka-ui": "^2.11.0",
     "tailwindcss": "^4.3.3",

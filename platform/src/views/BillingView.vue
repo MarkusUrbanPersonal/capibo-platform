@@ -1,13 +1,13 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { toast } from '@/components/ui/toast'
-import { Plus, Wallet, CalendarClock, Download, CreditCard, Building2, Pencil, Zap, TicketPercent, Check } from '@lucide/vue'
+import { Plus, Wallet, CalendarClock, CreditCard, Building2, Pencil, Zap, TicketPercent, Check } from '@lucide/vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import MonthlySpendChart from '@/components/charts/MonthlySpendChart.vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,45 +16,56 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { billing as seed, dailyUsage, monthlySpend, promoCodes, transactions as seedTx, TODAY } from '@/data/mock'
-import { formatCurrency, formatCurrencyRound, formatDate, formatNumber } from '@/lib/format'
+import { api } from '@convex/_generated/api'
+import { convex, errorMessage, useQuery } from '@/lib/convex'
+import { can } from '@/stores/session'
+import { formatCurrency, formatCurrencyRound, formatDate, formatNumber, isoToday } from '@/lib/format'
 
 const topUpOpen = ref(false)
 const detailsOpen = ref(false)
 const rechargeOpen = ref(false)
 
-const account = reactive({
-  balance: seed.balance,
-  autoRecharge: seed.autoRecharge.enabled,
-  threshold: String(seed.autoRecharge.threshold),
-  rechargeAmount: String(seed.autoRecharge.amount),
-  details: { ...seed.billingDetails },
+const { data: overview } = useQuery(api.billing.overview)
+const account = computed(() => {
+  const o = overview.value
+  if (!o) return null
+  return {
+    balance: o.balance,
+    monthlyBudget: o.monthlyBudget,
+    autoRecharge: o.autoRecharge.enabled,
+    threshold: String(o.autoRecharge.threshold),
+    rechargeAmount: String(o.autoRecharge.amount),
+    details: o.billingDetails,
+  }
 })
-const transactions = ref(seedTx.map((t) => ({ ...t })))
+// Only join the address parts that are filled in, so a new account doesn't show a stray comma.
+const addressLines = computed(() => {
+  const { address, city, country } = account.value?.details ?? {}
+  return [address, [city, country].filter(Boolean).join(', ')].filter(Boolean)
+})
+const transactions = computed(() => overview.value?.transactions ?? [])
+const redeemedPromos = computed(() => transactions.value.filter((t) => t.kind === 'promo'))
 
-const month = TODAY.toISOString().slice(0, 7)
-const mtdRows = dailyUsage.filter((r) => r.date.startsWith(month))
-const mtdSpend = mtdRows.reduce((s, r) => s + r.cost, 0)
+/** Runs a Convex call, toasting the server's message if it fails. Returns undefined on failure. */
+async function run(call) {
+  try {
+    return (await call()) ?? true
+  } catch (e) {
+    toast.add({ title: errorMessage(e), type: 'error' })
+  }
+}
 
-const chartMonths = monthlySpend.slice(-9)
+const today = isoToday()
+const month = today.slice(0, 7)
+const { data: monthly } = useQuery(api.usage.monthly, { today, months: 9 })
+const chartMonths = computed(() => monthly.value ?? [])
+const mtdSpend = computed(() => chartMonths.value.at(-1)?.cost ?? 0)
 
 
 // Add credits: buy with a card at checkout, or redeem a promo code.
-const PRESETS = ['10000', '25000', '50000']
-const topUp = reactive({ mode: 'card', preset: '25000', custom: '' })
+const PRESETS = ['20', '100', '500']
+const topUp = reactive({ mode: 'card', preset: '100', custom: '' })
 const topUpAmount = computed(() => Number(topUp.custom || topUp.preset) || 0)
-
-function addTransaction(description, amount, kind) {
-  account.balance += amount
-  transactions.value.unshift({
-    id: `TXN-${Math.floor(89000 + Math.random() * 900)}`,
-    date: TODAY.toISOString().slice(0, 10),
-    description,
-    amount,
-    status: 'succeeded',
-    kind,
-  })
-}
 
 function openTopUp(mode = 'card') {
   topUp.mode = mode
@@ -63,60 +74,74 @@ function openTopUp(mode = 'card') {
   topUpOpen.value = true
 }
 
-function confirmTopUp() {
+const submitting = ref(false)
+
+async function confirmTopUp() {
   const amount = topUpAmount.value
-  if (amount < 500) return toast.add({ title: 'Minimum top-up is $500', type: 'error' })
-  addTransaction('Credit top-up · card checkout', amount, 'credit')
+  if (amount < 20) return toast.add({ title: 'Minimum top-up is $20', type: 'error' })
+  submitting.value = true
+  const ok = await run(() => convex.mutation(api.billing.topUp, { amount }))
+  submitting.value = false
+  if (!ok) return
   topUpOpen.value = false
   topUp.custom = ''
   toast.add({ title: `${formatCurrency(amount)} added to your balance`, type: 'success', description: 'Demo checkout — no card was charged.' })
 }
 
-const redeemed = reactive(new Set([seed.promo.code]))
 const promo = reactive({ code: '', error: '' })
 const promoKey = computed(() => promo.code.trim().toUpperCase())
-const promoMatch = computed(() => (redeemed.has(promoKey.value) ? null : promoCodes[promoKey.value] ?? null))
-function redeemPromo() {
-  const code = promoKey.value
-  if (!code) return (promo.error = 'Enter a promo code')
-  if (!promoCodes[code]) return (promo.error = `“${code}” isn’t a valid promo code`)
-  if (redeemed.has(code)) return (promo.error = `${code} has already been redeemed on this account`)
-  const { amount, label } = promoCodes[code]
-  redeemed.add(code)
-  addTransaction(`Promo code ${code} redeemed`, amount, 'promo')
-  topUpOpen.value = false
-  toast.add({ title: `${formatCurrency(amount)} in credits added`, type: 'success', description: `${label} · ${code}` })
+// Live preview of the code's value; null when unknown or already used on this account.
+const { data: promoMatch } = useQuery(api.billing.lookupPromo, () =>
+  topUpOpen.value && topUp.mode === 'promo' && promoKey.value ? { code: promoKey.value } : 'skip',
+)
+async function redeemPromo() {
+  if (!promoKey.value) return (promo.error = 'Enter a promo code')
+  submitting.value = true
+  try {
+    const { amount, label, code } = await convex.mutation(api.billing.redeemPromo, { code: promoKey.value })
+    topUpOpen.value = false
+    toast.add({ title: `${formatCurrency(amount)} in credits added`, type: 'success', description: `${label} · ${code}` })
+  } catch (e) {
+    promo.error = errorMessage(e)
+  } finally {
+    submitting.value = false
+  }
 }
 
 // Billing details
-const draft = reactive({ ...seed.billingDetails })
+const draft = reactive({ company: '', email: '', address: '', city: '', country: '', taxId: '' })
 function openDetails() {
-  Object.assign(draft, account.details)
+  Object.assign(draft, account.value.details)
   detailsOpen.value = true
 }
-function saveDetails() {
-  Object.assign(account.details, draft)
+async function saveDetails() {
+  if (!(await run(() => convex.mutation(api.billing.updateDetails, { ...draft })))) return
   detailsOpen.value = false
   toast.add({ title: 'Billing details updated', type: 'success', description: 'Changes appear on your next invoice.' })
 }
 
-function toggleAutoRecharge(v) {
-  account.autoRecharge = v
-  toast.add({ title: v ? 'Auto-recharge enabled' : 'Auto-recharge disabled' })
+async function toggleAutoRecharge(v) {
+  if (await run(() => convex.mutation(api.billing.setAutoRecharge, { enabled: v }))) {
+    toast.add({ title: v ? 'Auto-recharge enabled' : 'Auto-recharge disabled' })
+  }
 }
 
 // Auto-recharge: threshold/amount presets and a balance gauge with the trigger point.
-const THRESHOLDS = ['2500', '5000', '10000']
-const RECHARGE_AMOUNTS = ['10000', '25000', '50000']
-const dailyBurn = mtdSpend / mtdRows.length
-const gaugeMax = computed(() => Math.max(account.balance, Number(account.threshold) + Number(account.rechargeAmount)) * 1.1)
-const balancePct = computed(() => Math.min(100, (account.balance / gaugeMax.value) * 100))
-const thresholdPct = computed(() => (Number(account.threshold) / gaugeMax.value) * 100)
-const daysToRecharge = computed(() => Math.max(0, Math.floor((account.balance - Number(account.threshold)) / dailyBurn)))
-function setRecharge(key, value, label) {
-  if (!value || account[key] === value) return
-  account[key] = value
-  toast.add({ title: 'Auto-recharge updated', type: 'success', description: `${label} ${formatCurrencyRound(Number(value))}` })
+const THRESHOLDS = ['10', '20', '50']
+const RECHARGE_AMOUNTS = ['50', '100', '250']
+const dailyBurn = computed(() => mtdSpend.value / Number(today.slice(8, 10)))
+const gaugeMax = computed(() => Math.max(account.value.balance, Number(account.value.threshold) + Number(account.value.rechargeAmount)) * 1.1)
+const balancePct = computed(() => Math.min(100, (account.value.balance / gaugeMax.value) * 100))
+const thresholdPct = computed(() => (Number(account.value.threshold) / gaugeMax.value) * 100)
+const daysToRecharge = computed(() =>
+  dailyBurn.value ? Math.max(0, Math.floor((account.value.balance - Number(account.value.threshold)) / dailyBurn.value)) : null,
+)
+async function setRecharge(key, value, label) {
+  if (!value || account.value[key] === value) return
+  const field = key === 'threshold' ? 'threshold' : 'amount'
+  if (await run(() => convex.mutation(api.billing.setAutoRecharge, { [field]: Number(value) }))) {
+    toast.add({ title: 'Auto-recharge updated', type: 'success', description: `${label} ${formatCurrencyRound(Number(value))}` })
+  }
 }
 
 </script>
@@ -125,31 +150,33 @@ function setRecharge(key, value, label) {
   <div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-6">
     <PageHeader title="Billing">
       <template #actions>
-        <Button @click="openTopUp()"><Plus class="size-4" /> Add credits</Button>
+        <Button :disabled="!can.manageBilling" @click="openTopUp()"><Plus class="size-4" /> Add credits</Button>
       </template>
     </PageHeader>
 
+    <div v-if="!account" class="py-16 text-center text-sm text-muted-foreground" role="status">Loading billing…</div>
+    <template v-else>
     <div class="grid gap-4 md:grid-cols-3">
       <Card class="gap-0 py-0 shadow-none">
         <CardContent class="p-4">
           <div class="flex items-center justify-between text-sm text-muted-foreground">Credit balance <Wallet class="size-4" /></div>
           <div class="mt-2 text-2xl font-semibold tracking-tight">{{ formatCurrency(account.balance) }}</div>
-          <p class="mt-1 text-xs text-muted-foreground">Prepaid · {{ seed.plan }} plan</p>
+          <p class="mt-1 text-xs text-muted-foreground">Pay as you go</p>
         </CardContent>
       </Card>
       <Card class="gap-0 py-0 shadow-none">
         <CardContent class="p-4">
           <div class="flex items-center justify-between text-sm text-muted-foreground">Spend this month <CalendarClock class="size-4" /></div>
           <div class="mt-2 text-2xl font-semibold tracking-tight">{{ formatCurrencyRound(mtdSpend) }}</div>
-          <Progress :model-value="(mtdSpend / seed.monthlyBudget) * 100" class="mt-2 h-1.5" aria-label="Budget used" />
-          <p class="mt-1.5 text-xs text-muted-foreground">{{ Math.round((mtdSpend / seed.monthlyBudget) * 100) }}% of {{ formatCurrencyRound(seed.monthlyBudget) }} budget</p>
+          <Progress :model-value="(mtdSpend / account.monthlyBudget) * 100" class="mt-2 h-1.5" aria-label="Budget used" />
+          <p class="mt-1.5 text-xs text-muted-foreground">{{ Math.round((mtdSpend / account.monthlyBudget) * 100) }}% of {{ formatCurrencyRound(account.monthlyBudget) }} budget</p>
         </CardContent>
       </Card>
       <Card class="gap-0 py-0 shadow-none">
         <CardContent class="p-4">
           <div class="flex items-center justify-between gap-2 text-sm text-muted-foreground">
             Auto-recharge
-            <Switch :model-value="account.autoRecharge" aria-label="Auto-recharge" @update:model-value="toggleAutoRecharge" />
+            <Switch :model-value="account.autoRecharge" :disabled="!can.manageBilling" aria-label="Auto-recharge" @update:model-value="toggleAutoRecharge" />
           </div>
           <div class="mt-2 flex items-center gap-2 text-2xl font-semibold tracking-tight">
             <span
@@ -160,8 +187,8 @@ function setRecharge(key, value, label) {
             <span :class="account.autoRecharge ? '' : 'text-muted-foreground'">{{ account.autoRecharge ? 'On' : 'Off' }}</span>
           </div>
           <p class="mt-1 text-xs text-muted-foreground">
-            +{{ formatCurrencyRound(Number(account.rechargeAmount)) }} below {{ formatCurrencyRound(Number(account.threshold)) }}<template v-if="account.autoRecharge"> · next in ~{{ daysToRecharge }} days</template> ·
-            <button type="button" class="font-medium text-foreground underline-offset-4 hover:underline" @click="rechargeOpen = true">Edit</button>
+            +{{ formatCurrencyRound(Number(account.rechargeAmount)) }} below {{ formatCurrencyRound(Number(account.threshold)) }}<template v-if="account.autoRecharge && daysToRecharge !== null"> · next in ~{{ daysToRecharge }} days</template> ·
+            <button v-if="can.manageBilling" type="button" class="font-medium text-foreground underline-offset-4 hover:underline" @click="rechargeOpen = true">Edit</button>
           </p>
         </CardContent>
       </Card>
@@ -206,11 +233,13 @@ function setRecharge(key, value, label) {
               <TableHead>Description</TableHead>
               <TableHead class="hidden md:table-cell">Reference</TableHead>
               <TableHead class="text-right">Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead class="w-12 pr-6"><span class="sr-only">Download</span></TableHead>
+              <TableHead class="pr-6">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
+            <TableRow v-if="!transactions.length">
+              <TableCell colspan="5" class="py-8 text-center text-sm text-muted-foreground">No transactions yet</TableCell>
+            </TableRow>
             <TableRow v-for="t in transactions" :key="t.id">
               <TableCell class="pl-6 whitespace-nowrap text-muted-foreground">{{ formatDate(t.date) }}</TableCell>
               <TableCell>
@@ -223,18 +252,7 @@ function setRecharge(key, value, label) {
               <TableCell class="text-right tabular-nums" :class="t.kind !== 'invoice' && t.status === 'succeeded' ? 'text-status-good-text' : ''">
                 {{ t.kind !== 'invoice' ? '+' : '' }}{{ formatCurrency(t.amount) }}
               </TableCell>
-              <TableCell><StatusBadge :status="t.status" /></TableCell>
-              <TableCell class="pr-6">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="size-8"
-                  :aria-label="`Download ${t.id}`"
-                  @click="toast.add({ title: `${t.id}.pdf downloaded`, type: 'success', description: 'Demo file — PDF generation is not connected.' })"
-                >
-                  <Download class="size-4" />
-                </Button>
-              </TableCell>
+              <TableCell class="pr-6"><StatusBadge :status="t.status" /></TableCell>
             </TableRow>
           </TableBody>
         </Table>
@@ -248,27 +266,21 @@ function setRecharge(key, value, label) {
           <CardDescription>How this account is funded</CardDescription>
         </CardHeader>
         <CardContent class="grid gap-3">
-          <div class="flex items-center gap-4 rounded-lg border p-4">
+          <div v-for="p in redeemedPromos" :key="p.id" class="flex items-center gap-4 rounded-lg border p-4">
             <div class="flex h-10 w-14 shrink-0 items-center justify-center rounded-md bg-status-good/12 text-status-good-text">
               <TicketPercent class="size-5" aria-hidden="true" />
             </div>
             <div class="min-w-0 flex-1">
-              <div class="font-medium">Promo code <span class="font-mono text-sm">{{ seed.promo.code }}</span></div>
-              <div class="text-sm text-muted-foreground">{{ formatCurrencyRound(seed.promo.amount) }} in credits · redeemed {{ formatDate(seed.promo.redeemedAt) }}</div>
+              <div class="font-medium">Promo code <span class="font-mono text-sm">{{ p.promoCode }}</span></div>
+              <div class="text-sm text-muted-foreground">{{ formatCurrencyRound(p.amount) }} in credits · redeemed {{ formatDate(p.date) }}</div>
             </div>
             <Badge variant="secondary"><Check class="size-3" /> Redeemed</Badge>
           </div>
-          <p class="flex items-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground">
-            <CreditCard class="size-4 shrink-0" /> No card on file. Add one to buy credits or use auto-recharge.
-          </p>
+          <div v-if="!redeemedPromos.length" class="flex flex-col items-start gap-3 rounded-lg border border-dashed p-4">
+            <p class="text-sm text-muted-foreground">No credits yet. Buy credits or redeem a promo code to start a mission.</p>
+            <Button v-if="can.manageBilling" variant="outline" size="sm" @click="openTopUp('promo')"><TicketPercent class="size-4" /> Redeem a promo code</Button>
+          </div>
         </CardContent>
-        <CardFooter class="flex-wrap gap-2">
-          <Button variant="outline" size="sm" @click="toast.add({ title: 'Card setup opens the secure payment form', description: 'Payment processing is not connected in this version.' })">
-            <CreditCard class="size-4" /> Add card
-          </Button>
-          <Button variant="outline" size="sm" @click="openTopUp('promo')"><TicketPercent class="size-4" /> Redeem code</Button>
-          <Button variant="ghost" size="sm" @click="toast.add({ title: 'Wire transfer details sent to finance@timefactories.com' })">Pay by wire transfer</Button>
-        </CardFooter>
       </Card>
 
       <Card class="shadow-none">
@@ -276,15 +288,19 @@ function setRecharge(key, value, label) {
           <CardTitle>Billing details</CardTitle>
           <CardDescription>Shown on invoices</CardDescription>
           <CardAction>
-            <Button variant="ghost" size="sm" @click="openDetails"><Pencil class="size-4" /> Edit</Button>
+            <Button v-if="can.manageBilling" variant="ghost" size="sm" @click="openDetails"><Pencil class="size-4" /> Edit</Button>
           </CardAction>
         </CardHeader>
         <CardContent>
           <dl class="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
             <dt class="text-muted-foreground">Company</dt><dd class="flex items-center gap-2"><Building2 class="size-3.5 text-muted-foreground" /> {{ account.details.company }}</dd>
             <dt class="text-muted-foreground">Billing email</dt><dd>{{ account.details.email }}</dd>
-            <dt class="text-muted-foreground">Address</dt><dd>{{ account.details.address }}<br />{{ account.details.city }}, {{ account.details.country }}</dd>
-            <dt class="text-muted-foreground">Tax ID</dt><dd class="font-mono text-xs leading-5">{{ account.details.taxId }}</dd>
+            <dt class="text-muted-foreground">Address</dt><dd>
+              <template v-if="addressLines.length">
+                <template v-for="(line, i) in addressLines" :key="i"><br v-if="i" />{{ line }}</template>
+              </template>
+              <span v-else class="text-muted-foreground">Not set</span>
+            </dd>
           </dl>
         </CardContent>
       </Card>
@@ -362,7 +378,7 @@ function setRecharge(key, value, label) {
               </ToggleGroup>
               <div class="grid gap-2">
                 <Label for="topup-custom">Custom amount (USD)</Label>
-                <Input id="topup-custom" v-model="topUp.custom" type="number" min="500" step="100" placeholder="e.g. 15000" />
+                <Input id="topup-custom" v-model="topUp.custom" type="number" min="20" step="1" placeholder="e.g. 250" />
               </div>
               <div class="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm">
                 <span class="text-muted-foreground">Pay by card at checkout</span>
@@ -397,8 +413,8 @@ function setRecharge(key, value, label) {
         </Tabs>
         <DialogFooter>
           <Button variant="outline" @click="topUpOpen = false">Cancel</Button>
-          <Button v-if="topUp.mode === 'card'" type="submit" form="topup-form">Add {{ formatCurrencyRound(topUpAmount) }}</Button>
-          <Button v-else type="submit" form="promo-form"><TicketPercent class="size-4" /> Redeem</Button>
+          <Button v-if="topUp.mode === 'card'" type="submit" form="topup-form" :disabled="submitting">Add {{ formatCurrencyRound(topUpAmount) }}</Button>
+          <Button v-else type="submit" form="promo-form" :disabled="submitting"><TicketPercent class="size-4" /> Redeem</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -418,7 +434,6 @@ function setRecharge(key, value, label) {
             <div class="grid gap-1.5"><Label for="bd-city">City</Label><Input id="bd-city" v-model="draft.city" /></div>
             <div class="grid gap-1.5"><Label for="bd-country">Country</Label><Input id="bd-country" v-model="draft.country" /></div>
           </div>
-          <div class="grid gap-1.5"><Label for="bd-tax">Tax ID</Label><Input id="bd-tax" v-model="draft.taxId" /></div>
         </form>
         <DialogFooter>
           <Button variant="outline" @click="detailsOpen = false">Cancel</Button>
@@ -426,6 +441,7 @@ function setRecharge(key, value, label) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </template>
 
   </div>
 </template>
