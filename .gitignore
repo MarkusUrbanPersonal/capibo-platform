@@ -1,0 +1,4 @@
+# Stray Claude notify signal files
+*claude-notify-signals*
+node_modules/
+.DS_Store
