@@ -1,6 +1,5 @@
 ![Capibo Banner](https://timefactories.com/calhacks/capibo_banner.png)
 
----
 
 ## Structure
 
