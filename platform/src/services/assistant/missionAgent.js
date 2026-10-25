@@ -17,7 +17,7 @@ export const PLANNER_MODEL = 'gpt-5.4-mini'
 // `args` commands insert `/id ` for the user to finish; the rest run immediately.
 export const SLASH_COMMANDS = [
   { id: 'estimate', description: 'Estimate cost and timeline for the plan', icon: 'calculator', category: 'Commands' },
-  { id: 'launch', description: 'Dispatch the approved plan to collectors', icon: 'send', category: 'Commands' },
+  { id: 'launch', description: 'Publish the approved plan to collectors', icon: 'send', category: 'Commands' },
   { id: 'usage', description: 'Tokens and cost used by this conversation', icon: 'gauge', category: 'Commands' },
   { id: 'help', description: 'What the mission planner can do', icon: 'help', category: 'Commands' },
 ]
@@ -365,14 +365,15 @@ async function usageReport(ctx) {
 async function help(ctx) {
   await ctx.say(
     [
-      "I'm the Capibo mission planner. I turn a robot goal into a data-collection mission:",
+      "I'm the Capibo mission planner. Describe what your robot should learn, in plain words, and I'll turn it into a data-collection mission:",
       '',
       '1. **Plan** — break the behavior into recordable video tasks',
-      '2. **Review** — edit tasks, video counts and guidelines',
+      '2. **Review** — switch tasks off, change video counts, or ask me to add or edit tasks',
       '3. **Estimate** — cost, footage hours and delivery time',
-      '4. **Launch** — dispatch tasks to collectors on the Capibo app',
+      '4. **Launch** — publish the tasks to collectors in the Capibo app',
       '',
-      'Commands: `/plan <goal>`, `/tasks`, `/add <task>`, `/estimate`, `/launch`, `/usage`, `/help`.',
+      'Commands (type `/` to pick one):',
+      ...SLASH_COMMANDS.map((c) => `- \`/${c.id}\` — ${c.description}`),
     ].join('\n'),
   )
 }
